@@ -8,7 +8,6 @@ import {
   Alert,
   Animated,
   Pressable,
-  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
@@ -16,6 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { FutsalCourt } from '@/components/futsal';
 import { Popover } from '@/components/ui/Popover';
+import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
 import { useMatchStore } from '@/store/useMatchStore';
 import { useMatchTimer, useBenchPanel } from '@/hooks';
 import { generateId, formatTime } from '@/utils';
@@ -26,62 +26,6 @@ import * as profileRepo from '@/database/repositories/profileRepository';
 
 type Route = RouteProp<RootStackParamList, 'LiveScout'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-// Helper component for player avatar (photo or jersey)
-function PlayerAvatar({ 
-  photoUri, 
-  playerNumber, 
-  size = 80 
-}: { 
-  photoUri?: string | null; 
-  playerNumber: number; 
-  size?: number;
-}) {
-  if (photoUri) {
-    return (
-      <Image
-        source={{ uri: photoUri }}
-        style={{ width: size, height: size, borderRadius: 8 }}
-        resizeMode="cover"
-      />
-    );
-  }
-
-  // Jersey icon with number
-  const numDigits = playerNumber.toString().length;
-  // Ajustar fontSize baseado no número de dígitos
-  const getFontSize = () => {
-    if (numDigits <= 2) return size * 0.25;
-    if (numDigits === 3) return size * 0.2;
-    if (numDigits === 4) return size * 0.16;
-    return size * 0.13; // 5+ dígitos
-  };
-
-  return (
-    <View
-      style={{
-        width: size,
-        height: size,
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}
-    >
-      <Icon name="tshirt-crew" size={size * 0.95} color="#3B82F6" />
-      <Text
-        style={{
-          position: 'absolute',
-          color: '#ffffff',
-          fontSize: getFontSize(),
-          fontWeight: 'bold',
-        }}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-      >
-        {playerNumber}
-      </Text>
-    </View>
-  );
-}
 
 export function LiveScoutScreen() {
   const route = useRoute<Route>();
@@ -409,12 +353,12 @@ export function LiveScoutScreen() {
                   <TouchableOpacity
                     key={player.player_id}
                     onPress={() => handlePlayerSelect(player)}
-                    className="bg-gray-700/50 rounded-lg p-3 items-center justify-center min-w-[100px]"
+                    className="bg-gray-700/50 rounded-lg p-2 items-center justify-center min-w-[100px]"
                   >
                     <PlayerAvatar 
                       photoUri={player.photo_uri}
                       playerNumber={player.player_number ?? 0}
-                      size={80}
+                      size={72}
                     />
                     <Text className="text-white text-sm mt-2 font-medium" numberOfLines={1}>
                       {(player.player_name ?? 'Sem nome').split(' ')[0]}

@@ -2,8 +2,10 @@
  * Futsal-specific types and interfaces
  */
 
+import type { MatchPlayer } from './index';
+
 export interface PlayerPosition {
-  player: any;
+  player: MatchPlayer;
   position: number; // 1-5
 }
 

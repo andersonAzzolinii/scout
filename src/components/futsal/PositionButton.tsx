@@ -1,5 +1,6 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
+import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
 import { POSITION_BUTTON } from '@/constants/futsal.constants';
 import type { PlayerPosition } from '@/types/futsal.types';
 
@@ -22,7 +23,9 @@ export function PositionButton({
   onPress,
 }: PositionButtonProps) {
   const isOccupied = !!player;
-  const { size, radius, colors, shadow } = POSITION_BUTTON;
+  const { size, sizeOccupied, radius, colors, shadow } = POSITION_BUTTON;
+  const currentSize = isOccupied ? sizeOccupied : size;
+  const halfSize = currentSize / 2;
 
   return (
     <TouchableOpacity
@@ -33,27 +36,31 @@ export function PositionButton({
       style={[
         styles.button,
         {
-          left: screenX - radius,
-          top: screenY - radius,
-          width: size,
-          height: size,
-          borderRadius: radius,
-          backgroundColor: isOccupied ? colors.occupied : colors.empty,
-          borderColor: colors.border,
-          shadowColor: shadow.color,
-          shadowOffset: shadow.offset,
-          shadowOpacity: shadow.opacity,
-          shadowRadius: shadow.radius,
-          elevation: shadow.elevation,
+          left: screenX - halfSize,
+          top: screenY - halfSize,
+          width: currentSize,
+          height: currentSize,
         },
       ]}
     >
       {isOccupied ? (
-        <Text style={styles.playerNumber}>
-          {player.player_number ?? '?'}
-        </Text>
+        <View style={styles.avatarContainer}>
+          <PlayerAvatar 
+            photoUri={player.photo_uri}
+            playerNumber={player.player_number ?? 0}
+            size={144}
+          />
+          <Text style={styles.playerName} numberOfLines={1}>
+            {(player.player_name ?? 'Sem nome').split(' ')[0]}
+          </Text>
+        </View>
       ) : (
-        <Text style={styles.plusSign}>+</Text>
+        <PlayerAvatar 
+          photoUri={null}
+          playerNumber={0}
+          size={currentSize}
+          forceJersey={true}
+        />
       )}
     </TouchableOpacity>
   );
@@ -62,18 +69,21 @@ export function PositionButton({
 const styles = StyleSheet.create({
   button: {
     position: 'absolute',
-    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'visible',
+  },
+  avatarContainer: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  playerNumber: {
-    color: '#fff',
-    fontSize: 16,
+  playerName: {
+    color: '#ffffff',
+    fontSize: 14,
     fontWeight: 'bold',
-  },
-  plusSign: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: 'bold',
+    marginTop: 5,
+    textShadowColor: '#000',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 });
