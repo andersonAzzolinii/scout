@@ -51,7 +51,7 @@ export function deleteMatch(id: string): void {
 export function getMatchPlayers(matchId: string): MatchPlayer[] {
   const db = getDatabase();
   return db.getAllSync<MatchPlayer>(
-    `SELECT mp.*, p.name AS player_name, p.number AS player_number
+    `SELECT mp.*, p.name AS player_name, p.number AS player_number, p.photo_uri
      FROM match_players mp
      JOIN players p ON mp.player_id = p.id
      WHERE mp.match_id = ?`,

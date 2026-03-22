@@ -8,6 +8,7 @@ import {
   Alert,
   Animated,
   Pressable,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
@@ -25,6 +26,62 @@ import * as profileRepo from '@/database/repositories/profileRepository';
 
 type Route = RouteProp<RootStackParamList, 'LiveScout'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+// Helper component for player avatar (photo or jersey)
+function PlayerAvatar({ 
+  photoUri, 
+  playerNumber, 
+  size = 80 
+}: { 
+  photoUri?: string | null; 
+  playerNumber: number; 
+  size?: number;
+}) {
+  if (photoUri) {
+    return (
+      <Image
+        source={{ uri: photoUri }}
+        style={{ width: size, height: size, borderRadius: 8 }}
+        resizeMode="cover"
+      />
+    );
+  }
+
+  // Jersey icon with number
+  const numDigits = playerNumber.toString().length;
+  // Ajustar fontSize baseado no número de dígitos
+  const getFontSize = () => {
+    if (numDigits <= 2) return size * 0.25;
+    if (numDigits === 3) return size * 0.2;
+    if (numDigits === 4) return size * 0.16;
+    return size * 0.13; // 5+ dígitos
+  };
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      <Icon name="tshirt-crew" size={size * 0.95} color="#3B82F6" />
+      <Text
+        style={{
+          position: 'absolute',
+          color: '#ffffff',
+          fontSize: getFontSize(),
+          fontWeight: 'bold',
+        }}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
+        {playerNumber}
+      </Text>
+    </View>
+  );
+}
 
 export function LiveScoutScreen() {
   const route = useRoute<Route>();
@@ -304,23 +361,25 @@ export function LiveScoutScreen() {
                 showsVerticalScrollIndicator={true}
                 style={{ maxHeight: isBenchExpanded ? 150 : 0 }}
               >
-                <View className={isBenchExpanded ? "flex-row flex-wrap gap-2" : "flex-row gap-2"}>
+                <View className={isBenchExpanded ? "flex-row flex-wrap gap-3" : "flex-row gap-3"}>
                   {availablePlayers.map((player) => (
                     <TouchableOpacity
                       key={player.player_id}
                       onPress={() => handleBenchPlayerClick(player)}
-                      className={`rounded-lg px-4 py-3 items-center ${
-                        isBenchExpanded ? 'w-[90px]' : 'min-w-[80px]'
+                      className={`rounded-lg p-2 items-center bg-gray-700/50 ${
+                        isBenchExpanded ? 'w-[100px]' : 'min-w-[95px]'
                       } ${
                         selectedPlayerFromBench?.player_id === player.player_id
-                          ? 'bg-primary-500'
-                          : 'bg-gray-700'
+                          ? 'border-2 border-primary-500'
+                          : 'border-2 border-transparent'
                       }`}
                     >
-                      <Text className="text-white font-bold text-sm">
-                        #{player.player_number ?? '?'}
-                      </Text>
-                      <Text className="text-white text-xs mt-1" numberOfLines={1}>
+                      <PlayerAvatar 
+                        photoUri={player.photo_uri}
+                        playerNumber={player.player_number ?? 0}
+                        size={72}
+                      />
+                      <Text className="text-white text-sm mt-2 font-medium" numberOfLines={1}>
                         {(player.player_name ?? 'Sem nome').split(' ')[0]}
                       </Text>
                     </TouchableOpacity>
@@ -345,24 +404,26 @@ export function LiveScoutScreen() {
               className="px-3 pb-2"
               showsHorizontalScrollIndicator={false}
             >
-              <View className="flex-row gap-2">
+              <View className="flex-row gap-3">
                 {availablePlayers.map((player) => (
                   <TouchableOpacity
                     key={player.player_id}
                     onPress={() => handlePlayerSelect(player)}
-                    className="bg-primary-600 rounded-lg px-5 py-5 items-center justify-center min-w-[90px]"
+                    className="bg-gray-700/50 rounded-lg p-3 items-center justify-center min-w-[100px]"
                   >
-                    <Text className="text-white font-bold text-lg">
-                      #{player.player_number ?? '?'}
-                    </Text>
-                    <Text className="text-white text-xs mt-1" numberOfLines={1}>
+                    <PlayerAvatar 
+                      photoUri={player.photo_uri}
+                      playerNumber={player.player_number ?? 0}
+                      size={80}
+                    />
+                    <Text className="text-white text-sm mt-2 font-medium" numberOfLines={1}>
                       {(player.player_name ?? 'Sem nome').split(' ')[0]}
                     </Text>
                   </TouchableOpacity>
                 ))}
                 <TouchableOpacity
                   onPress={() => setSelectedPositionSlot(null)}
-                  className="bg-gray-700 rounded-lg px-5 py-5 items-center justify-center min-w-[90px]"
+                  className="bg-gray-700 rounded-lg px-5 py-5 items-center justify-center min-w-[100px]"
                 >
                   <Text className="text-gray-300 text-sm">Cancelar</Text>
                 </TouchableOpacity>

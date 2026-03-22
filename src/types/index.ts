@@ -78,6 +78,7 @@ export interface MatchPlayer {
   // Joined fields (optional)
   player_name?: string;
   player_number?: number;
+  photo_uri?: string | null;
 }
 
 // ─── Match Events ─────────────────────────────────────────────────────────────
