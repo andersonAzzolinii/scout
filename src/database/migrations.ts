@@ -207,4 +207,20 @@ export function runMigrations(): void {
   } catch (error) {
     console.warn('Migração photo_uri teams:', error);
   }
+
+  // Migração: adicionar campo tactical_position na tabela match_players
+  try {
+    const matchPlayersInfo = db.getAllSync<{ name: string }>(
+      `PRAGMA table_info(match_players);`
+    );
+    const hasTacticalPosition = matchPlayersInfo.some((col) => col.name === 'tactical_position');
+
+    if (!hasTacticalPosition) {
+      console.log('🔄 Adicionando campo tactical_position na tabela match_players...');
+      db.execSync(`ALTER TABLE match_players ADD COLUMN tactical_position INTEGER;`);
+      console.log('✅ Campo tactical_position adicionado na tabela match_players');
+    }
+  } catch (error) {
+    console.warn('Migração tactical_position:', error);
+  }
 }

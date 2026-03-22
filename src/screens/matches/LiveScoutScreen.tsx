@@ -79,6 +79,21 @@ export function LiveScoutScreen() {
   const match = live.match;
   const matchPlayers = live.players;
 
+  // Load positioned players from database
+  useEffect(() => {
+    if (!match) return;
+    
+    const players = matchRepo.getMatchPlayers(matchId);
+    const positioned = players
+      .filter(p => p.tactical_position != null)
+      .map(p => ({
+        player: p,
+        position: p.tactical_position!
+      }));
+    
+    setPositionedPlayers(positioned);
+  }, [matchId, match]);
+
   // Filtrar jogadores disponíveis (não posicionados)
   const availablePlayers = matchPlayers.filter(
     (mp) => !positionedPlayers.some((pp) => pp.player.player_id === mp.player_id)
@@ -91,6 +106,10 @@ export function LiveScoutScreen() {
     if (existingPlayer) {
       // Remove player from position
       setPositionedPlayers(positionedPlayers.filter((p) => p.position !== position));
+      // Clear position in database
+      if (match) {
+        matchRepo.updateMatchPlayerPosition(match.id, existingPlayer.player.player_id, null);
+      }
       return;
     }
 
@@ -100,6 +119,10 @@ export function LiveScoutScreen() {
         player: selectedPlayerFromBench, 
         position 
       }]);
+      // Save position to database
+      if (match) {
+        matchRepo.updateMatchPlayerPosition(match.id, selectedPlayerFromBench.player_id, position);
+      }
       setSelectedPlayerFromBench(null);
       return;
     }
@@ -109,12 +132,14 @@ export function LiveScoutScreen() {
   };
 
   const handlePlayerSelect = (player: typeof matchPlayers[0]) => {
-    if (!selectedPositionSlot) return;
+    if (!selectedPositionSlot || !match) return;
     
     setPositionedPlayers([...positionedPlayers, { 
       player, 
       position: selectedPositionSlot.position
     }]);
+    // Save position to database
+    matchRepo.updateMatchPlayerPosition(match.id, player.player_id, selectedPositionSlot.position);
     setSelectedPositionSlot(null);
   };
 

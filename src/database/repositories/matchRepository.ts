@@ -80,3 +80,13 @@ export function removeMatchPlayer(id: string): void {
   const db = getDatabase();
   db.runSync(`DELETE FROM match_players WHERE id = ?`, [id]);
 }
+
+export function updateMatchPlayerPosition(matchId: string, playerId: string, position: number | null): void {
+  const db = getDatabase();
+  db.runSync(
+    `UPDATE match_players 
+     SET tactical_position = ? 
+     WHERE match_id = ? AND player_id = ?`,
+    [position, matchId, playerId]
+  );
+}

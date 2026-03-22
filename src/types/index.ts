@@ -75,6 +75,7 @@ export interface MatchPlayer {
   player_id: string;
   team_id: string;
   is_starting: boolean;
+  tactical_position?: number | null;
   // Joined fields (optional)
   player_name?: string;
   player_number?: number;
