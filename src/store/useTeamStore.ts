@@ -7,7 +7,7 @@ interface TeamStore {
   players: Player[];
   loadTeams: () => void;
   createTeam: (team: Team) => void;
-  updateTeam: (id: string, name: string, photoUri?: string | null) => void;
+  updateTeam: (id: string, name: string, photoUri?: string | null, venue?: string | null) => void;
   deleteTeam: (id: string) => void;
   loadPlayers: (teamId: string) => void;
   createPlayer: (player: Omit<Player, 'created_at'>) => void;
@@ -28,8 +28,8 @@ export const useTeamStore = create<TeamStore>((set) => ({
     const teams = teamRepo.getTeams();
     set({ teams });
   },
-  updateTeam: (id, name, photoUri) => {
-    teamRepo.updateTeam(id, name, photoUri);
+  updateTeam: (id, name, photoUri, venue) => {
+    teamRepo.updateTeam(id, name, photoUri, venue);
     const teams = teamRepo.getTeams();
     set({ teams });
   },

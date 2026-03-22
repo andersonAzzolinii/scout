@@ -13,10 +13,11 @@ export function startBenchPeriod(
   const db = getDatabase();
   const id = `bench_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   
+  const now = Date.now();
   db.runSync(
-    `INSERT INTO bench_periods (id, match_id, player_id, start_minute, start_second)
-     VALUES (?, ?, ?, ?, ?)`,
-    [id, matchId, playerId, minute, second]
+    `INSERT INTO bench_periods (id, match_id, player_id, start_minute, start_second, start_timestamp)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, matchId, playerId, minute, second, now]
   );
 
   return {
@@ -27,6 +28,8 @@ export function startBenchPeriod(
     start_second: second,
     end_minute: null,
     end_second: null,
+    start_timestamp: now,
+    end_timestamp: null,
     created_at: new Date().toISOString(),
   };
 }
@@ -44,9 +47,9 @@ export function endBenchPeriod(
   
   db.runSync(
     `UPDATE bench_periods 
-     SET end_minute = ?, end_second = ?
+     SET end_minute = ?, end_second = ?, end_timestamp = ?
      WHERE match_id = ? AND player_id = ? AND end_minute IS NULL`,
-    [minute, second, matchId, playerId]
+    [minute, second, Date.now(), matchId, playerId]
   );
 }
 

@@ -35,9 +35,9 @@ export function getMatchById(id: string): Match | null {
 export function createMatch(match: Omit<Match, 'created_at' | 'team_name' | 'profile_name'>): void {
   const db = getDatabase();
   db.runSync(
-    `INSERT INTO matches (id, team_id, opponent_name, profile_id, date, location)
-     VALUES (?, ?, ?, ?, ?,?)`,
-    [match.id, match.team_id, match.opponent_name, match.profile_id, match.date, match.location]
+    `INSERT INTO matches (id, team_id, opponent_name, profile_id, date, location, is_home)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [match.id, match.team_id, match.opponent_name, match.profile_id, match.date, match.location, match.is_home ? 1 : 0]
   );
 }
 

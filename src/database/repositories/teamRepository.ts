@@ -18,14 +18,14 @@ export function getTeamById(id: string): Team | null {
 export function createTeam(team: Team): void {
   const db = getDatabase();
   db.runSync(
-    `INSERT INTO teams (id, name, photo_uri) VALUES (?, ?, ?)`,
-    [team.id, team.name, team.photo_uri ?? null]
+    `INSERT INTO teams (id, name, photo_uri, venue) VALUES (?, ?, ?, ?)`,
+    [team.id, team.name, team.photo_uri ?? null, team.venue ?? null]
   );
 }
 
-export function updateTeam(id: string, name: string, photoUri?: string | null): void {
+export function updateTeam(id: string, name: string, photoUri?: string | null, venue?: string | null): void {
   const db = getDatabase();
-  db.runSync(`UPDATE teams SET name = ?, photo_uri = ? WHERE id = ?`, [name, photoUri ?? null, id]);
+  db.runSync(`UPDATE teams SET name = ?, photo_uri = ?, venue = ? WHERE id = ?`, [name, photoUri ?? null, venue ?? null, id]);
 }
 
 export function deleteTeam(id: string): void {

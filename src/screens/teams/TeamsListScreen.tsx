@@ -26,6 +26,7 @@ export function TeamsListScreen() {
   const [newName, setNewName] = useState('');
   const [editTeam, setEditTeam] = useState<Team | null>(null);
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [venueInput, setVenueInput] = useState('');
 
   useEffect(() => { loadTeams(); }, []);
 
@@ -109,18 +110,20 @@ export function TeamsListScreen() {
   const handleSave = () => {
     if (!newName.trim()) return;
     if (editTeam) {
-      updateTeam(editTeam.id, newName.trim(), photoBase64);
+      updateTeam(editTeam.id, newName.trim(), photoBase64, venueInput.trim() || null);
     } else {
       createTeam({ 
         id: generateId(), 
         name: newName.trim(), 
         created_at: new Date().toISOString(),
-        photo_uri: photoBase64 
+        photo_uri: photoBase64,
+        venue: venueInput.trim() || null,
       });
     }
     setShowModal(false);
     setNewName('');
     setPhotoBase64(null);
+    setVenueInput('');
     setEditTeam(null);
   };
 
@@ -172,7 +175,8 @@ export function TeamsListScreen() {
                     onPress={() => { 
                       setEditTeam(item); 
                       setNewName(item.name); 
-                      setPhotoBase64(item.photo_uri || null); 
+                      setPhotoBase64(item.photo_uri || null);
+                      setVenueInput(item.venue || '');
                       setShowModal(true); 
                     }}
                     className="p-2 mr-1"
@@ -234,12 +238,21 @@ export function TeamsListScreen() {
 
               {/* Name Input */}
               <TextInput
-                className="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-base mb-4"
+                className="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-base mb-3"
                 placeholder="Nome do time"
                 placeholderTextColor="#6b7280"
                 value={newName}
                 onChangeText={setNewName}
                 autoFocus
+              />
+
+              {/* Venue Input */}
+              <TextInput
+                className="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-base mb-4"
+                placeholder="Nome do ginásio (opcional)"
+                placeholderTextColor="#6b7280"
+                value={venueInput}
+                onChangeText={setVenueInput}
               />
             </ScrollView>
 
@@ -252,6 +265,7 @@ export function TeamsListScreen() {
                   setEditTeam(null); 
                   setNewName('');
                   setPhotoBase64(null);
+                  setVenueInput('');
                 }}
                 className="flex-1"
               />

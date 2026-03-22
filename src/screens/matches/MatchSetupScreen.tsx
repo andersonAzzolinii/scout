@@ -5,6 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  Switch,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -33,6 +34,7 @@ export function MatchSetupScreen() {
   const [opponent, setOpponent] = useState('');
   const [profile, setProfile] = useState<ScoutProfile | null>(null);
   const [location, setLocation] = useState('');
+  const [isHome, setIsHome] = useState(true);
 
   useEffect(() => { loadTeams(); loadProfiles(); }, []);
 
@@ -51,7 +53,8 @@ export function MatchSetupScreen() {
       opponent_name: opponent.trim(),
       profile_id: profile.id,
       date: new Date().toISOString(),
-      location,
+      location: isHome ? (team.venue ?? location) : location,
+      is_home: isHome,
     });
 
     // Add all players as non-starting (will be positioned in LiveScout)
@@ -134,12 +137,34 @@ export function MatchSetupScreen() {
             selected={profile?.id ?? null}
             onSelect={(id) => setProfile(profiles.find((p) => p.id === id) ?? null)}
           />
-          <Input
-            label="Local (opcional)"
-            value={location}
-            onChangeText={setLocation}
-            placeholder="Ex: Ginásio Central"
-          />
+          {/* Home / Away toggle */}
+          <View className="flex-row items-center justify-between mb-4">
+            <View>
+              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">Mando de campo</Text>
+              <Text className="text-xs text-gray-400 dark:text-gray-500">
+                {isHome ? `Casa${team?.venue ? ` — ${team.venue}` : ''}` : 'Fora de casa'}
+              </Text>
+            </View>
+            <View className="flex-row items-center gap-2">
+              <Text className="text-xs text-gray-400">{isHome ? '🏠 Casa' : '✈️ Fora'}</Text>
+              <Switch
+                value={isHome}
+                onValueChange={setIsHome}
+                trackColor={{ false: '#6b7280', true: '#22c55e' }}
+                thumbColor="#fff"
+              />
+            </View>
+          </View>
+
+          {/* Location override when away, or show venue when home */}
+          {!isHome && (
+            <Input
+              label="Local da partida"
+              value={location}
+              onChangeText={setLocation}
+              placeholder="Ex: Ginásio do Adversário"
+            />
+          )}
         </Card>
 
         {/* Botão de iniciar */}

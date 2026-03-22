@@ -239,4 +239,31 @@ export function runMigrations(): void {
       FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
     );
   `);
+
+  // Migração: adicionar start_timestamp/end_timestamp na tabela bench_periods
+  try {
+    const bpInfo = db.getAllSync<{ name: string }>(`PRAGMA table_info(bench_periods);`);
+    if (!bpInfo.some(c => c.name === 'start_timestamp')) {
+      db.execSync(`ALTER TABLE bench_periods ADD COLUMN start_timestamp INTEGER;`);
+    }
+    if (!bpInfo.some(c => c.name === 'end_timestamp')) {
+      db.execSync(`ALTER TABLE bench_periods ADD COLUMN end_timestamp INTEGER;`);
+    }
+  } catch (e) { console.warn('Migração bench timestamps:', e); }
+
+  // Migração: adicionar campo venue na tabela teams
+  try {
+    const teamsInfo2 = db.getAllSync<{ name: string }>(`PRAGMA table_info(teams);`);
+    if (!teamsInfo2.some(c => c.name === 'venue')) {
+      db.execSync(`ALTER TABLE teams ADD COLUMN venue TEXT;`);
+    }
+  } catch (e) { console.warn('Migração venue:', e); }
+
+  // Migração: adicionar campo is_home na tabela matches
+  try {
+    const matchesInfo = db.getAllSync<{ name: string }>(`PRAGMA table_info(matches);`);
+    if (!matchesInfo.some(c => c.name === 'is_home')) {
+      db.execSync(`ALTER TABLE matches ADD COLUMN is_home INTEGER NOT NULL DEFAULT 1;`);
+    }
+  } catch (e) { console.warn('Migração is_home:', e); }
 }

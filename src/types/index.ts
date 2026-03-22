@@ -41,6 +41,7 @@ export interface Team {
   id: string;
   name: string;
   photo_uri?: string | null;
+  venue?: string | null;
   created_at: string;
 }
 
@@ -57,11 +58,12 @@ export interface Player {
 // ─── Matches ─────────────────────────────────────────────────────────────────
 export interface Match {
   id: string;
-  team_id: string; // Seu time
-  opponent_name: string; // Nome do adversário
+  team_id: string;
+  opponent_name: string;
   profile_id: string;
   date: string;
   location: string;
+  is_home: boolean;
   created_at: string;
   // Joined fields (optional)
   team_name?: string;
@@ -113,6 +115,8 @@ export interface BenchPeriod {
   start_second: number;
   end_minute: number | null;
   end_second: number | null;
+  start_timestamp: number | null;
+  end_timestamp: number | null;
   created_at: string;
 }
 

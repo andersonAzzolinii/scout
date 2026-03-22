@@ -28,6 +28,54 @@ import * as benchRepo from '@/database/repositories/benchRepository';
 type Route = RouteProp<RootStackParamList, 'LiveScout'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
+interface BenchPlayerCardProps {
+  playerName: string | null;
+  playerNumber: number | null;
+  photoUri: string | null;
+  benchStartTs?: number;
+  onPress: () => void;
+  isSelected?: boolean;
+  expanded?: boolean;
+}
+
+function BenchPlayerCard({ playerName, playerNumber, photoUri, benchStartTs, onPress, isSelected, expanded }: BenchPlayerCardProps) {
+  const isOnBench = !!benchStartTs;
+  const benchTime = isOnBench ? Math.floor((Date.now() - benchStartTs!) / 1000) : 0;
+  const minutes = Math.floor(benchTime / 60);
+  const seconds = benchTime % 60;
+
+  return (
+    <View className="items-center">
+      <TouchableOpacity
+        onPress={onPress}
+        style={{
+          borderRadius: 10,
+          padding: 8,
+          alignItems: 'center',
+          backgroundColor: 'rgba(55,65,81,0.5)',
+          width: expanded ? 100 : 110,
+          borderWidth: 2,
+          borderColor: isSelected ? '#818cf8' : 'transparent',
+        }}
+      >
+        <PlayerAvatar
+          photoUri={photoUri}
+          playerNumber={playerNumber ?? 0}
+          size={64}
+        />
+        <Text className="text-white text-xs mt-1 font-medium" numberOfLines={1}>
+          {(playerName ?? 'Sem nome').split(' ')[0]}
+        </Text>
+        <View style={{ marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 99, backgroundColor: isOnBench ? '#d97706' : 'transparent', minWidth: 40, alignItems: 'center' }}>
+          <Text style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: '700', color: isOnBench ? '#ffffff' : 'transparent' }}>
+            {minutes}:{seconds.toString().padStart(2, '0')}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 export function LiveScoutScreen() {
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
@@ -65,7 +113,7 @@ export function LiveScoutScreen() {
   const modalOpacityAnim = React.useRef(new Animated.Value(0)).current;
 
   // Custom hooks for timer and bench panel
-  const { isRunning, elapsed, toggleTimer } = useMatchTimer();
+  const { isRunning, elapsed, period, toggleTimer, markHalfTime, markFullTime } = useMatchTimer();
   const {
     isExpanded: isBenchExpanded,
     heightAnim: benchHeightAnim,
@@ -180,6 +228,7 @@ export function LiveScoutScreen() {
     }
 
     // Open player selection popover
+    if (availablePlayers.length === 0) return;
     setSelectedPositionSlot({ position, screenX, screenY });
   };
 
@@ -324,7 +373,7 @@ export function LiveScoutScreen() {
         </TouchableOpacity> */}
 
         <View className="flex-1">
-          <Text className="text-white font-bold text-xs" numberOfLines={1}>
+          <Text className="text-white font-bold text-sm" numberOfLines={1}>
             {match.team_name} vs {match.opponent_name}
           </Text>
           <Text className="text-gray-400 text-xs mt-0.5">
@@ -338,26 +387,86 @@ export function LiveScoutScreen() {
         </View>
 
         {/* Timer */}
-        <View className="flex-1 items-center justify-center">
+        <View className="flex-1 items-center justify-center flex-row gap-2">
           <TouchableOpacity
-            onPress={toggleTimer}
+            onPress={period === 0 ? undefined : toggleTimer}
+            disabled={period === 0}
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 8,
-              backgroundColor: isRunning ? '#92400e' : '#14532d',
+              flexDirection: 'row', alignItems: 'center', gap: 8,
+              backgroundColor: period === 0 ? '#1f2937' : isRunning ? '#92400e' : '#14532d',
               borderWidth: 2,
-              borderColor: isRunning ? '#f59e0b' : '#22c55e',
-              borderRadius: 14,
-              paddingHorizontal: 18,
-              paddingVertical: 8,
+              borderColor: period === 0 ? '#374151' : isRunning ? '#f59e0b' : '#22c55e',
+              borderRadius: 14, paddingHorizontal: 18,
+              height: 48,
             }}
           >
-            <Icon name={isRunning ? 'pause-circle' : 'play-circle'} size={22} color={isRunning ? '#f59e0b' : '#22c55e'} />
-            <Text style={{ color: '#ffffff', fontFamily: 'monospace', fontSize: 18, fontWeight: '800', letterSpacing: 1 }}>
+            <Icon
+              name={period === 0 ? 'flag-checkered' : isRunning ? 'pause-circle' : 'play-circle'}
+              size={22}
+              color={period === 0 ? '#6b7280' : isRunning ? '#f59e0b' : '#22c55e'}
+            />
+            <Text style={{ color: period === 0 ? '#6b7280' : '#ffffff', fontFamily: 'monospace', fontSize: 18, fontWeight: '800', letterSpacing: 1 }}>
               {formatTime(elapsed)}
             </Text>
           </TouchableOpacity>
+
+          {/* Period badge */}
+          <View style={{
+            backgroundColor: period === 0 ? '#374151' : period === 1 ? '#1e3a5f' : '#1a3a2a',
+            borderRadius: 8, paddingHorizontal: 12,
+            borderWidth: 1,
+            borderColor: period === 0 ? '#4b5563' : period === 1 ? '#3b82f6' : '#22c55e',
+            height: 48, alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Text style={{ color: period === 0 ? '#9ca3af' : period === 1 ? '#60a5fa' : '#4ade80', fontSize: 15, fontWeight: '800', letterSpacing: 0.5 }}>
+              {period === 1 ? '1ºT' : period === 2 ? '2ºT' : 'FIM'}
+            </Text>
+          </View>
+
+          {/* Half-time / Full-time button */}
+          {period !== 0 && (
+            <TouchableOpacity
+              onPress={() => {
+                const stopAllBenchTimers = () => {
+                  if (!match) return;
+                  const minute = Math.floor(elapsed / 60);
+                  const second = elapsed % 60;
+                  Object.keys(benchStartTimestamps.current).forEach((playerId) => {
+                    benchRepo.endBenchPeriod(match.id, playerId, minute, second);
+                    delete benchStartTimestamps.current[playerId];
+                  });
+                };
+                if (period === 1) {
+                  Alert.alert('Intervalo', 'Encerrar o 1º tempo?', [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Confirmar', onPress: () => { stopAllBenchTimers(); markHalfTime(); } },
+                  ]);
+                } else {
+                  Alert.alert('Encerrar Partida', 'Confirmar o fim do jogo?', [
+                    { text: 'Cancelar', style: 'cancel' },
+                    { text: 'Confirmar', onPress: () => { stopAllBenchTimers(); markFullTime(); } },
+                  ]);
+                }
+              }}
+              style={{
+                backgroundColor: period === 1 ? '#292014' : '#2a1515',
+                borderWidth: 2,
+                borderColor: period === 1 ? '#f59e0b' : '#ef4444',
+                borderRadius: 12, paddingHorizontal: 14,
+                alignItems: 'center', justifyContent: 'center', gap: 3,
+                height: 48,
+              }}
+            >
+              <Icon
+                name={period === 1 ? 'whistle-outline' : 'flag-checkered'}
+                size={26}
+                color={period === 1 ? '#f59e0b' : '#ef4444'}
+              />
+              <Text style={{ color: period === 1 ? '#f59e0b' : '#ef4444', fontSize: 9, fontWeight: '700', letterSpacing: 0.3 }}>
+                {period === 1 ? 'INTERVALO' : 'FIM'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Undo */}
@@ -368,45 +477,68 @@ export function LiveScoutScreen() {
               { text: 'Remover', style: 'destructive', onPress: undoLastEvent },
             ]);
           }}
-          className="w-8 h-8 rounded-full bg-gray-800 items-center justify-center"
+          style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#374151' }}
         >
-          <Icon name="undo" size={16} color="#9ca3af" />
+          <Icon name="undo" size={22} color="#9ca3af" />
         </TouchableOpacity>
       </View>
 
       {/* ─── Main Content ──────────────────────────────────────────────────────── */}
-      <View className="flex-1">
-        
-        {/* Overlay */}
-        {isBenchExpanded && (
-          <Pressable
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              zIndex: 10,
-            }}
-            onPress={collapseBench}
-          >
-            <Animated.View
-              style={{
-                flex: 1,
-                backgroundColor: '#000',
-                opacity: overlayOpacityAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 0.7],
-                }),
-              }}
-            />
-          </Pressable>
+      <View className="flex-1 flex-row">
+
+        {/* Left: Bench Players */}
+        {availablePlayers.length > 0 && (
+          <View style={{ width: 112, borderRightWidth: 1, borderRightColor: '#1f2937', backgroundColor: '#0b1120' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingTop: 8, paddingBottom: 4 }}>
+              <Text style={{ color: '#6b7280', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
+                RESERVAS
+              </Text>
+              {(() => {
+                const playersOnBench = availablePlayers.filter(p =>
+                  match && benchRepo.isPlayerOnBench(match.id, p.player_id)
+                ).length;
+                return playersOnBench > 0 ? (
+                  <View style={{ backgroundColor: '#d97706', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
+                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>{playersOnBench} fora</Text>
+                  </View>
+                ) : null;
+              })()}
+            </View>
+            {selectedPlayerFromBench && (
+              <View style={{ paddingHorizontal: 6, paddingBottom: 4 }}>
+                <Text style={{ color: '#818cf8', fontSize: 9 }}>Toque na quadra para posicionar</Text>
+                <TouchableOpacity
+                  onPress={() => setSelectedPlayerFromBench(null)}
+                  style={{ marginTop: 2, backgroundColor: '#374151', borderRadius: 4, paddingVertical: 2, alignItems: 'center' }}
+                >
+                  <Text style={{ color: '#d1d5db', fontSize: 9 }}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 6, gap: 6 }}>
+              {availablePlayers.map((player) => (
+                <BenchPlayerCard
+                  key={player.player_id}
+                  playerName={player.player_name}
+                  playerNumber={player.player_number}
+                  photoUri={player.photo_uri}
+                  benchStartTs={benchStartTimestamps.current[player.player_id]}
+                  onPress={() => handleBenchPlayerClick(player)}
+                  isSelected={selectedPlayerFromBench?.player_id === player.player_id}
+                  expanded={true}
+                />
+              ))}
+            </ScrollView>
+          </View>
         )}
-        
-        {/* Court */}
+
+        {/* Right: Court */}
         <View className="flex-1 justify-center items-center">
           <FutsalCourt
-            width={Math.min(screenWidth * 0.85, (screenHeight - insets.top - 150) * (2/3))}
+            width={Math.min(
+              (screenWidth - (availablePlayers.length > 0 ? 120 : 0)) * 0.92,
+              (screenHeight - insets.top - 80) * (2 / 3)
+            )}
             onPositionPress={handlePositionPress}
             positionedPlayers={positionedPlayers}
             onPlayerPress={handlePlayerPress}
@@ -414,119 +546,6 @@ export function LiveScoutScreen() {
             getPlayerEvents={getPlayerEvents}
           />
         </View>
-
-        {/* Banco de Reservas */}
-        {availablePlayers.length > 0 && (
-          <Animated.View 
-            style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              zIndex: 20,
-              backgroundColor: '#111827',
-              borderTopWidth: 1,
-              borderTopColor: '#1f2937',
-              height: benchHeightAnim,
-            }}
-            {...panResponder.panHandlers}
-          >
-            {/* Drag Handle */}
-            <TouchableOpacity
-              onPress={() => isBenchExpanded ? collapseBench() : expandBench()}
-              className="items-center py-2"
-              activeOpacity={0.7}
-            >
-              <View className="w-12 h-1 bg-gray-600 rounded-full" />
-            </TouchableOpacity>
-
-            <View className="px-3 pb-3">
-              <View className="flex-row items-center justify-between mb-2">
-                <View className="flex-row items-center gap-2">
-                  <Text className="text-gray-400 text-xs">
-                    Banco de Reservas ({availablePlayers.length})
-                  </Text>
-                  {(() => {
-                    const playersOnBench = availablePlayers.filter(p => 
-                      match && benchRepo.isPlayerOnBench(match.id, p.player_id)
-                    ).length;
-                    if (playersOnBench > 0) {
-                      return (
-                        <View className="bg-amber-600 px-2 py-0.5 rounded">
-                          <Text className="text-white text-xs font-bold">
-                            {playersOnBench} fora
-                          </Text>
-                        </View>
-                      );
-                    }
-                    return null;
-                  })()}
-                </View>
-                {selectedPlayerFromBench ? (
-                  <TouchableOpacity
-                    onPress={() => setSelectedPlayerFromBench(null)}
-                    className="bg-gray-700 px-3 py-1 rounded"
-                  >
-                    <Text className="text-gray-300 text-xs">Cancelar</Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-              {selectedPlayerFromBench && (
-                <Text className="text-primary-500 text-xs mb-2">
-                  • Toque na quadra para posicionar #{selectedPlayerFromBench.player_number}
-                </Text>
-              )}
-              <ScrollView 
-                horizontal={!isBenchExpanded}
-                showsHorizontalScrollIndicator={false}
-                showsVerticalScrollIndicator={true}
-              >
-                <View className={isBenchExpanded ? "flex-row flex-wrap gap-3" : "flex-row gap-3"}>
-                  {availablePlayers.map((player) => {
-                    const isOnBench = match ? benchRepo.isPlayerOnBench(match.id, player.player_id) : false;
-                    const startTs = benchStartTimestamps.current[player.player_id];
-                    const benchTime = isOnBench && startTs
-                      ? Math.floor((Date.now() - startTs) / 1000)
-                      : 0;
-                    const minutes = Math.floor(benchTime / 60);
-                    const seconds = benchTime % 60;
-                    
-                    return (
-                      <View key={player.player_id} className="items-center">
-                        <TouchableOpacity
-                          onPress={() => handleBenchPlayerClick(player)}
-                          className={`rounded-lg p-3 items-center bg-gray-700/50 ${
-                            isBenchExpanded ? 'w-[120px]' : 'min-w-[110px]'
-                          } ${
-                            selectedPlayerFromBench?.player_id === player.player_id
-                              ? 'border-2 border-primary-500'
-                              : 'border-2 border-transparent'
-                          }`}
-                        >
-                          <PlayerAvatar 
-                            photoUri={player.photo_uri}
-                            playerNumber={player.player_number ?? 0}
-                            size={80}
-                          />
-                          <Text className="text-white text-sm mt-1 font-medium" numberOfLines={1}>
-                            {(player.player_name ?? 'Sem nome').split(' ')[0]}
-                          </Text>
-                          {isOnBench && (
-                            <View className="mt-1 bg-amber-600 px-2 py-0.5 rounded-full">
-                              <Text className="text-white text-xs font-mono font-bold">
-                                {minutes}:{seconds.toString().padStart(2, '0')}
-                              </Text>
-                            </View>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-            </View>
-          </Animated.View>
-        )}
 
         {/* Player Selection Popover */}
         {selectedPositionSlot && availablePlayers.length > 0 && !selectedPlayerFromBench && (
@@ -537,27 +556,21 @@ export function LiveScoutScreen() {
             onClose={() => setSelectedPositionSlot(null)}
           >
             <Text className="text-gray-400 text-xs mb-2 px-3 pt-2">Selecione um jogador:</Text>
-            <ScrollView 
+            <ScrollView
               horizontal
               className="px-3 pb-2"
               showsHorizontalScrollIndicator={false}
             >
-              <View className="flex-row gap-3">
+              <View className="flex-row gap-3 items-center">
                 {availablePlayers.map((player) => (
-                  <TouchableOpacity
+                  <BenchPlayerCard
                     key={player.player_id}
+                    playerName={player.player_name}
+                    playerNumber={player.player_number}
+                    photoUri={player.photo_uri}
+                    benchStartTs={benchStartTimestamps.current[player.player_id]}
                     onPress={() => handlePlayerSelect(player)}
-                    className="bg-gray-700/50 rounded-lg p-2 items-center justify-center min-w-[100px]"
-                  >
-                    <PlayerAvatar 
-                      photoUri={player.photo_uri}
-                      playerNumber={player.player_number ?? 0}
-                      size={72}
-                    />
-                    <Text className="text-white text-sm mt-2 font-medium" numberOfLines={1}>
-                      {(player.player_name ?? 'Sem nome').split(' ')[0]}
-                    </Text>
-                  </TouchableOpacity>
+                  />
                 ))}
                 <TouchableOpacity
                   onPress={() => setSelectedPositionSlot(null)}
@@ -616,10 +629,13 @@ export function LiveScoutScreen() {
                     Histórico no Banco
                   </Text>
                   {periods.map((period, idx) => {
-                    const startTs = benchStartTimestamps.current[selId];
-                    const durationSec = period.end_minute !== null && period.end_second !== null
-                      ? (period.end_minute * 60 + period.end_second) - (period.start_minute * 60 + period.start_second)
-                      : startTs ? Math.floor((Date.now() - startTs) / 1000) : null;
+                    const durationSec = period.start_timestamp
+                      ? period.end_timestamp
+                        ? Math.floor((period.end_timestamp - period.start_timestamp) / 1000)
+                        : Math.floor((Date.now() - period.start_timestamp) / 1000)
+                      : period.end_minute !== null && period.end_second !== null
+                        ? (period.end_minute * 60 + period.end_second) - (period.start_minute * 60 + period.start_second)
+                        : null;
                     return (
                       <View key={idx} style={{ marginBottom: idx < periods.length - 1 ? 6 : 0 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>

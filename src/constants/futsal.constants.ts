@@ -20,11 +20,11 @@ export const COURT_COLORS = {
  * Fixed tactical positions on the court (percentage-based for responsiveness)
  */
 export const FIXED_POSITIONS: Record<number, PositionCoordinates> = {
-  1: { xPercent: 50, yPercent: 90.83, label: 'GOL' },    // Goleiro (quase dentro da goleira)
-  2: { xPercent: 50, yPercent: 70.83, label: 'FIX' },    // Fixo (centralizado)
-  3: { xPercent: 22.5, yPercent: 50, label: 'ALA' },     // Ala esquerda
-  4: { xPercent: 77.5, yPercent: 50, label: 'ALA' },     // Ala direita
-  5: { xPercent: 50, yPercent: 28.33, label: 'PIV' },    // Pivô (mais à frente)
+  1: { xPercent: 50, yPercent: 80.83, label: 'GOL' },    // Goleiro (quase dentro da goleira)
+  2: { xPercent: 50, yPercent: 60.83, label: 'FIX' },    // Fixo (centralizado)
+  3: { xPercent: 22.5, yPercent: 40, label: 'ALA' },     // Ala esquerda
+  4: { xPercent: 77.5, yPercent: 40, label: 'ALA' },     // Ala direita
+  5: { xPercent: 50, yPercent: 18.33, label: 'PIV' },    // Pivô (mais à frente)
 } as const;
 
 /**
