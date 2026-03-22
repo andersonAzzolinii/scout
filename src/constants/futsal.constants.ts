@@ -53,7 +53,7 @@ export const POSITION_BUTTON = {
  */
 export const BENCH_PANEL = {
   collapsedHeight: 110,
-  expandedHeight: 220,
+  expandedHeight: 320,
   animationDuration: 200,
   overlayOpacity: 0.7,
 } as const;

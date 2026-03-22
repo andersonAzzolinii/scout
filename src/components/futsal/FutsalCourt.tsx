@@ -5,11 +5,15 @@ import { PositionButton } from './PositionButton';
 import { useFutsalPositions } from '@/hooks/useFutsalPositions';
 import { SVG_ASPECT_RATIO, FIXED_POSITIONS } from '@/constants/futsal.constants';
 import type { PlayerPosition } from '@/types/futsal.types';
+import type { MatchEvent } from '@/types';
 
 interface FutsalCourtProps {
   width: number;
   positionedPlayers?: PlayerPosition[];
   onPositionPress?: (position: number, screenX: number, screenY: number) => void;
+  onPlayerPress?: (player: PlayerPosition['player']) => void;
+  selectedPlayerId?: string | null;
+  getPlayerEvents?: (playerId: string) => MatchEvent[];
 }
 
 /**
@@ -19,6 +23,9 @@ export function FutsalCourt({
   width,
   positionedPlayers = [],
   onPositionPress,
+  onPlayerPress,
+  selectedPlayerId,
+  getPlayerEvents,
 }: FutsalCourtProps) {
   const height = useMemo(() => width / SVG_ASPECT_RATIO, [width]);
 
@@ -49,6 +56,9 @@ export function FutsalCourt({
             screenY={screenY}
             player={player?.player}
             onPress={onPositionPress || (() => {})}
+            onPlayerPress={onPlayerPress}
+            isSelected={player?.player?.player_id === selectedPlayerId}
+            playerEvents={player?.player ? getPlayerEvents?.(player.player.player_id) || [] : []}
           />
         );
       })}

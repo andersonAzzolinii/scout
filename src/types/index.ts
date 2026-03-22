@@ -104,6 +104,18 @@ export interface MatchEvent {
   team_name?: string;
 }
 
+// ─── Bench Periods ───────────────────────────────────────────────────────────
+export interface BenchPeriod {
+  id: string;
+  match_id: string;
+  player_id: string;
+  start_minute: number;
+  start_second: number;
+  end_minute: number | null;
+  end_second: number | null;
+  created_at: string;
+}
+
 // ─── Event Relations ─────────────────────────────────────────────────────────
 export interface EventRelation {
   id: string;

@@ -223,4 +223,20 @@ export function runMigrations(): void {
   } catch (error) {
     console.warn('Migração tactical_position:', error);
   }
+
+  // Criar tabela bench_periods para rastrear tempo no banco
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS bench_periods (
+      id TEXT PRIMARY KEY NOT NULL,
+      match_id TEXT NOT NULL,
+      player_id TEXT NOT NULL,
+      start_minute INTEGER NOT NULL,
+      start_second INTEGER NOT NULL,
+      end_minute INTEGER,
+      end_second INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+      FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+    );
+  `);
 }
