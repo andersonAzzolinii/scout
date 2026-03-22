@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, ScrollView, TouchableOpacity, Image, Text, Alert } from 'react-native';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { Header } from '@/components/ui/Header';
@@ -52,6 +53,33 @@ export function PlayerFormScreen() {
         console.error('Erro ao converter imagem:', error);
         Alert.alert('Erro', 'Não foi possível processar a imagem.');
       }
+    }
+  };
+
+  const pickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+      if (asset && asset.uri) {
+        try {
+          const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          setPhotoBase64(`data:image/jpeg;base64,${base64}`);
+        } catch (error) {
+          console.error('Erro ao converter imagem:', error);
+          Alert.alert('Erro', 'Não foi possível processar a imagem.');
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao selecionar arquivo:', error);
+      Alert.alert('Erro', 'Não foi possível abrir o seletor de arquivos.');
     }
   };
 
@@ -117,7 +145,8 @@ export function PlayerFormScreen() {
               onPress={() => {
                 Alert.alert('Foto do Jogador', 'Escolha uma opção', [
                   { text: 'Tirar Foto', onPress: takePhoto },
-                  { text: 'Escolher da Galeria', onPress: pickImage },
+                  { text: 'Galeria (Álbuns)', onPress: pickImage },
+                  { text: 'Arquivos (Downloads)', onPress: pickFile },
                   { text: 'Cancelar', style: 'cancel' },
                 ]);
               }}
