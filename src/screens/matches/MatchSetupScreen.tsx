@@ -168,7 +168,7 @@ export function MatchSetupScreen() {
         </Card>
 
         {/* Botão de iniciar */}
-        {team && profile && opponent.trim() && (
+        {!!(team && profile && opponent.trim()) && (
           <Button
             title="Iniciar Scout"
             onPress={handleCreate}

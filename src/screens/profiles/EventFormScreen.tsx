@@ -32,9 +32,7 @@ export function EventFormScreen() {
   const route = useRoute<Route>();
   const navigation = useNavigation();
   const { categoryId, eventId, profileId } = route.params;
-  const { events, createEvent, updateEvent, deleteEvent, loadEvents } = useProfileStore();
-
-  useEffect(() => { loadEvents(categoryId); }, [categoryId]);
+  const { events, createEvent, updateEvent, deleteEvent } = useProfileStore();
 
   const existing = eventId ? events.find((e) => e.id === eventId) : undefined;
 

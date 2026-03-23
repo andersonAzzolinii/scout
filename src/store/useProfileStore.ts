@@ -81,8 +81,8 @@ export const useProfileStore = create<ProfileStore>((set) => ({
   },
   createEvent: (event) => {
     profileRepo.createScoutEvent(event);
-    const events = profileRepo.getEventsByCategory(event.category_id);
-    set({ events });
+    const newEvent: ScoutEvent = { ...event, created_at: new Date().toISOString() };
+    set((state) => ({ events: [...state.events, newEvent] }));
   },
   updateEvent: (event) => {
     profileRepo.updateScoutEvent(event);

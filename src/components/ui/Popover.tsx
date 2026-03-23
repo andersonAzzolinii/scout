@@ -13,8 +13,8 @@ export function Popover({ visible, x, y, onClose, children }: PopoverProps) {
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
   
   // Ajustar posição para não sair da tela
-  const popoverWidth = screenWidth * 0.7;
-  const popoverMaxHeight = 200;
+  const popoverWidth = screenWidth - 20;
+  const popoverMaxHeight = 220;
   
   let adjustedX = x - popoverWidth / 2; // Centralizar horizontalmente
   let adjustedY = y + 20; // Um pouco abaixo do ponto clicado
@@ -79,6 +79,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
-    maxHeight: 200,
+    maxHeight: 220,
   },
 });

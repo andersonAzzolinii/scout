@@ -103,6 +103,7 @@ export function LiveScoutScreen() {
   const [positionedPlayers, setPositionedPlayers] = useState<PlayerPosition[]>([]);
   const [selectedPlayerFromBench, setSelectedPlayerFromBench] = useState<typeof matchPlayers[0] | null>(null);
   const [showEventsModal, setShowEventsModal] = useState(false);
+  const [showSwapPanel, setShowSwapPanel] = useState(false);
   // wall-clock timestamps (ms) when each player entered the bench
   const benchStartTimestamps = useRef<Record<string, number>>({});
   // tick to force re-render every second while players are on bench
@@ -267,6 +268,7 @@ export function LiveScoutScreen() {
 
   const handlePlayerPress = (player:typeof matchPlayers[0]) => {
     setSelectedPlayer(player.player_id, player.team_id);
+    setShowSwapPanel(false);
     setShowEventsModal(true);
   };
 
@@ -294,6 +296,43 @@ export function LiveScoutScreen() {
     // Registrar timestamp de wall-clock
     benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
     
+    setShowEventsModal(false);
+  };
+
+  const handleSwapPlayer = (incomingPlayer: typeof matchPlayers[0]) => {
+    if (!live.selectedPlayerId || !match) return;
+
+    const minute = Math.floor(elapsed / 60);
+    const second = elapsed % 60;
+
+    // Jogador que sai: remove da posição e inicia timer no banco
+    const outgoing = positionedPlayers.find(p => p.player.player_id === live.selectedPlayerId);
+    const outgoingPosition = outgoing?.position ?? null;
+
+    const updatedPositions = positionedPlayers.filter(
+      p => p.player.player_id !== live.selectedPlayerId
+    );
+    matchRepo.updateMatchPlayerPosition(match.id, live.selectedPlayerId, null);
+    benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second);
+    benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
+
+    // Jogador que entra: encerra timer do banco (se ativo) e ocupa a posição
+    const isOnBench = benchRepo.isPlayerOnBench(match.id, incomingPlayer.player_id);
+    if (isOnBench) {
+      benchRepo.endBenchPeriod(match.id, incomingPlayer.player_id, minute, second);
+      delete benchStartTimestamps.current[incomingPlayer.player_id];
+    }
+
+    const newPositions = outgoingPosition != null
+      ? [...updatedPositions, { player: incomingPlayer, position: outgoingPosition }]
+      : updatedPositions;
+
+    setPositionedPlayers(newPositions);
+    if (outgoingPosition != null) {
+      matchRepo.updateMatchPlayerPosition(match.id, incomingPlayer.player_id, outgoingPosition);
+    }
+
+    setShowSwapPanel(false);
     setShowEventsModal(false);
   };
 
@@ -685,32 +724,88 @@ export function LiveScoutScreen() {
                 
                 return (
                   <View className="items-center mb-8">
-                    <View 
-                      style={{
-                        shadowColor: '#3B82F6',
-                        shadowOffset: { width: 0, height: 0 },
-                        shadowOpacity: 0.8,
-                        shadowRadius: 20,
-                        elevation: 20,
-                      }}
-                    >
-                      <PlayerAvatar 
-                        photoUri={selectedPlayer.photo_uri}
-                        playerNumber={selectedPlayer.player_number ?? 0}
-                        size={200}
-                      />
+                    <View style={{ position: 'relative' }}>
+                      <View 
+                        style={{
+                          shadowColor: '#3B82F6',
+                          shadowOffset: { width: 0, height: 0 },
+                          shadowOpacity: 0.8,
+                          shadowRadius: 20,
+                          elevation: 20,
+                        }}
+                      >
+                        <PlayerAvatar 
+                          photoUri={selectedPlayer.photo_uri}
+                          playerNumber={selectedPlayer.player_number ?? 0}
+                          size={230}
+                        />
+                      </View>
                     </View>
-                    <Text className="text-white text-2xl font-bold mt-4">
+                    <Text className="text-white text-3xl font-bold mt-4">
                       {selectedPlayer.player_name ?? 'Sem nome'}
                     </Text>
-                    <Text className="text-gray-400 text-sm">
+                    <Text className="text-gray-400 text-base">
                       #{selectedPlayer.player_number}
                     </Text>
+                    {/* Swap button */}
+                    <TouchableOpacity
+                      onPress={() => setShowSwapPanel(true)}
+                      style={{
+                        marginTop: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10,
+                        backgroundColor: '#ffffff',
+                        borderRadius: 99,
+                        paddingHorizontal: 28,
+                        paddingVertical: 14,
+                        elevation: 4,
+                      }}
+                    >
+                      <Icon name="swap-horizontal" size={26} color="#1f2937" />
+                      <Text style={{ color: '#1f2937', fontWeight: '700', fontSize: 20 }}>Trocar jogador</Text>
+                    </TouchableOpacity>
+
+                    {/* Swap Panel */}
+                    {showSwapPanel && (() => {
+                      const benchPlayers = matchPlayers.filter(
+                        mp => !positionedPlayers.some(pp => pp.player.player_id === mp.player_id)
+                          && mp.player_id !== live.selectedPlayerId
+                      );
+                      return (
+                        <View style={{ marginTop: 12, backgroundColor: 'rgba(17,24,39,0.95)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#374151', width: screenWidth * 0.9 }}>
+                          <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, textAlign: 'center' }}>
+                            Escolha quem entra
+                          </Text>
+                          {benchPlayers.length === 0 ? (
+                            <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: 13 }}>Nenhum reserva disponível</Text>
+                          ) : (
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                              <View style={{ flexDirection: 'row', gap: 10 }}>
+                                {benchPlayers.map(player => (
+                                  <BenchPlayerCard
+                                    key={player.player_id}
+                                    playerName={player.player_name}
+                                    playerNumber={player.player_number}
+                                    photoUri={player.photo_uri}
+                                    benchStartTs={benchStartTimestamps.current[player.player_id]}
+                                    onPress={() => handleSwapPlayer(player)}
+                                  />
+                                ))}
+                              </View>
+                            </ScrollView>
+                          )}
+                          <TouchableOpacity onPress={() => setShowSwapPanel(false)} style={{ marginTop: 12, alignSelf: 'stretch', backgroundColor: '#374151', borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}>
+                            <Text style={{ color: '#d1d5db', fontSize: 15, fontWeight: '600' }}>Cancelar troca</Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    })()}
                     
-                    {/* Recent Events */}
+                    {/* Recent Events */}}
                     {playerEvents.length > 0 && (
                       <View className="mt-4 w-full px-4">
-                        <Text className="text-gray-400 text-xs uppercase tracking-wide mb-2 text-center">
+                        <Text className="text-gray-400 text-sm uppercase tracking-wide mb-2 text-center">
                           Últimos Eventos ({playerEvents.length})
                         </Text>
                         <View className="flex-row flex-wrap justify-center gap-2">
@@ -743,7 +838,7 @@ export function LiveScoutScreen() {
               })()}
 
               {/* Events Grid */}
-              <View className="w-full px-4" style={{ maxWidth: 400 }}>
+              <View style={{ width: screenWidth * 0.9, alignSelf: 'center' }}>
                 <ScrollView 
                   showsVerticalScrollIndicator={false}
                   style={{ maxHeight: screenHeight * 0.5 }}
@@ -755,11 +850,11 @@ export function LiveScoutScreen() {
                     
                     return (
                       <View key={category.id} className="mb-6">
-                        <Text className="text-gray-400 text-xs font-semibold mb-3 uppercase tracking-wider text-center">
+                        <Text className="text-gray-400 text-sm font-semibold mb-3 uppercase tracking-wider text-center">
                           {category.name}
                         </Text>
                         <View className="flex-row flex-wrap justify-center gap-3">
-                          {categoryEvents.map((event) => (
+                          {[...categoryEvents].sort((a, b) => (b.is_positive ? 1 : 0) - (a.is_positive ? 1 : 0)).map((event) => (
                             <TouchableOpacity
                               key={event.id}
                               onPress={() => handleEventPress(event)}
@@ -783,9 +878,9 @@ export function LiveScoutScreen() {
                                 color="#ffffff" 
                               />
                               <Text 
-                                className="text-white text-xs font-medium mt-2 text-center"
+                                className="text-white text-sm font-medium mt-2 text-center"
                                 numberOfLines={2}
-                                style={{ lineHeight: 14 }}
+                                style={{ lineHeight: 16 }}
                               >
                                 {event.name}
                               </Text>
@@ -801,8 +896,9 @@ export function LiveScoutScreen() {
                 <View className="flex-row gap-2 mt-4">
                   <TouchableOpacity
                     onPress={handleSendToBench}
-                    className="flex-1 bg-amber-600 rounded-lg py-3"
+                    className="flex-1 bg-amber-600 rounded-lg"
                     style={{
+                      paddingVertical: 16,
                       shadowColor: '#000',
                       shadowOffset: { width: 0, height: 2 },
                       shadowOpacity: 0.3,
@@ -811,8 +907,8 @@ export function LiveScoutScreen() {
                     }}
                   >
                     <View className="flex-row items-center justify-center gap-2">
-                      <Icon name="seat-outline" size={18} color="#ffffff" />
-                      <Text className="text-white text-center font-medium">
+                      <Icon name="seat-outline" size={22} color="#ffffff" />
+                      <Text className="text-white text-xl text-center font-medium">
                         Enviar para Reserva
                       </Text>
                     </View>
@@ -820,8 +916,10 @@ export function LiveScoutScreen() {
 
                   <TouchableOpacity
                     onPress={handleRemovePlayer}
-                    className="bg-red-600 rounded-lg py-3 px-4"
+                    className="bg-red-600 rounded-lg"
                     style={{
+                      paddingVertical: 16,
+                      paddingHorizontal: 40,
                       shadowColor: '#000',
                       shadowOffset: { width: 0, height: 2 },
                       shadowOpacity: 0.3,
@@ -829,7 +927,7 @@ export function LiveScoutScreen() {
                       elevation: 4,
                     }}
                   >
-                    <Icon name="close-circle-outline" size={24} color="#ffffff" />
+                    <Icon name="close-circle-outline" size={32} color="#ffffff" />
                   </TouchableOpacity>
                 </View>
 
@@ -845,7 +943,7 @@ export function LiveScoutScreen() {
                     elevation: 4,
                   }}
                 >
-                  <Text className="text-white text-center font-medium">Cancelar</Text>
+                  <Text className="text-white text-base text-center font-medium">Cancelar</Text>
                 </TouchableOpacity>
               </View>
             </Animated.View>
