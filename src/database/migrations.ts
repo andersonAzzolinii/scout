@@ -266,4 +266,12 @@ export function runMigrations(): void {
       db.execSync(`ALTER TABLE matches ADD COLUMN is_home INTEGER NOT NULL DEFAULT 1;`);
     }
   } catch (e) { console.warn('Migração is_home:', e); }
+
+  // Migração: adicionar campo period na tabela match_events
+  try {
+    const eventsInfo = db.getAllSync<{ name: string }>(`PRAGMA table_info(match_events);`);
+    if (!eventsInfo.some(c => c.name === 'period')) {
+      db.execSync(`ALTER TABLE match_events ADD COLUMN period INTEGER NOT NULL DEFAULT 1;`);
+    }
+  } catch (e) { console.warn('Migração period:', e); }
 }

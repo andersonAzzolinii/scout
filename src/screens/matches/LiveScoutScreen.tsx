@@ -8,6 +8,7 @@ import {
   Alert,
   Animated,
   Pressable,
+  BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
@@ -89,6 +90,7 @@ export function LiveScoutScreen() {
     endLiveSession,
     setSelectedPlayer,
     addLiveEvent,
+    deleteEvent,
     undoLastEvent,
     setTimer,
   } = useMatchStore();
@@ -166,6 +168,16 @@ export function LiveScoutScreen() {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // Close events modal on hardware back button
+  useEffect(() => {
+    if (!showEventsModal) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setShowEventsModal(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [showEventsModal]);
 
   // Animate events modal
   useEffect(() => {
@@ -368,6 +380,7 @@ export function LiveScoutScreen() {
       event_id: scoutEvent.id,
       minute,
       second,
+      period,
       x: null,
       y: null,
       created_at: new Date().toISOString(),
@@ -378,7 +391,6 @@ export function LiveScoutScreen() {
     };
 
     addLiveEvent(newEvent);
-    setShowEventsModal(false);
   };
 
   if (!match) {
@@ -522,11 +534,30 @@ export function LiveScoutScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* ─── Player Info Strip (visible when event panels are open) ─────────── */}
+      {showEventsModal && live.selectedPlayerId && (() => {
+        const sel = positionedPlayers.find(p => p.player.player_id === live.selectedPlayerId)?.player;
+        if (!sel) return null;
+        return (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, backgroundColor: '#111827', borderBottomWidth: 1, borderBottomColor: '#1f2937' }}>
+            <PlayerAvatar photoUri={sel.photo_uri} playerNumber={sel.player_number ?? 0} size={40} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }} numberOfLines={1}>{sel.player_name ?? 'Sem nome'}</Text>
+              <Text style={{ color: '#9ca3af', fontSize: 11 }}>#{sel.player_number}</Text>
+            </View>
+            {/* Close panels */}
+            <TouchableOpacity onPress={() => setShowEventsModal(false)} style={{ backgroundColor: '#1f2937', borderRadius: 8, padding: 9, borderWidth: 1, borderColor: '#374151' }}>
+              <Icon name="close" size={20} color="#9ca3af" />
+            </TouchableOpacity>
+          </View>
+        );
+      })()}
+
       {/* ─── Main Content ──────────────────────────────────────────────────────── */}
       <View className="flex-1 flex-row">
 
-        {/* Left: Bench Players */}
-        {availablePlayers.length > 0 && (
+        {/* Left: Bench Players (hidden when event panels open) */}
+        {availablePlayers.length > 0 && !showEventsModal && (
           <View style={{ width: 112, borderRightWidth: 1, borderRightColor: '#1f2937', backgroundColor: '#0b1120' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingTop: 8, paddingBottom: 4 }}>
               <Text style={{ color: '#6b7280', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
@@ -558,9 +589,9 @@ export function LiveScoutScreen() {
               {availablePlayers.map((player) => (
                 <BenchPlayerCard
                   key={player.player_id}
-                  playerName={player.player_name}
-                  playerNumber={player.player_number}
-                  photoUri={player.photo_uri}
+                  playerName={player.player_name ?? null}
+                  playerNumber={player.player_number ?? null}
+                  photoUri={player.photo_uri ?? null}
                   benchStartTs={benchStartTimestamps.current[player.player_id]}
                   onPress={() => handleBenchPlayerClick(player)}
                   isSelected={selectedPlayerFromBench?.player_id === player.player_id}
@@ -571,12 +602,47 @@ export function LiveScoutScreen() {
           </View>
         )}
 
-        {/* Right: Court */}
+        {/* Left: Negative Events Panel */}
+        {showEventsModal && live.selectedPlayerId && (
+          <View style={{ width: 100, backgroundColor: '#06090f', borderRightWidth: 1, borderRightColor: '#1f2937' }}>
+            <View style={{ paddingVertical: 7, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: 'rgba(239,68,68,0.08)' }}>
+              <Text style={{ color: '#ef4444', fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>ERROS</Text>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {categories.map((category) => {
+                const catEvents = events.filter(e => e.category_id === category.id && !e.is_positive);
+                if (catEvents.length === 0) return null;
+                return (
+                  <View key={category.id}>
+                    <Text style={{ color: '#374151', fontSize: 8, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 6, paddingTop: 8, paddingBottom: 3 }}>
+                      {category.name}
+                    </Text>
+                    {catEvents.map((evt) => (
+                      <TouchableOpacity
+                        key={evt.id}
+                        onPress={() => handleEventPress(evt)}
+                        activeOpacity={0.6}
+                        style={{ alignItems: 'center', padding: 8, borderBottomWidth: 1, borderBottomColor: '#0f172a', gap: 3 }}
+                      >
+                        <Icon name={evt.icon as any} size={22} color="#ef4444" />
+                        <Text style={{ color: '#d1d5db', fontSize: 9, textAlign: 'center', lineHeight: 12 }} numberOfLines={2}>
+                          {evt.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Center: Court */}
         <View className="flex-1 justify-center items-center">
           <FutsalCourt
             width={Math.min(
-              (screenWidth - (availablePlayers.length > 0 ? 120 : 0)) * 0.92,
-              (screenHeight - insets.top - 80) * (2 / 3)
+              (screenWidth - (showEventsModal && live.selectedPlayerId ? 200 : (availablePlayers.length > 0 ? 120 : 0))) * 0.96,
+              (screenHeight - insets.top - 130) * (2 / 3)
             )}
             onPositionPress={handlePositionPress}
             positionedPlayers={positionedPlayers}
@@ -585,6 +651,41 @@ export function LiveScoutScreen() {
             getPlayerEvents={getPlayerEvents}
           />
         </View>
+
+        {/* Right: Positive Events Panel */}
+        {showEventsModal && live.selectedPlayerId && (
+          <View style={{ width: 100, backgroundColor: '#06090f', borderLeftWidth: 1, borderLeftColor: '#1f2937' }}>
+            <View style={{ paddingVertical: 7, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: 'rgba(34,197,94,0.08)' }}>
+              <Text style={{ color: '#22c55e', fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>ACERTOS</Text>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {categories.map((category) => {
+                const catEvents = events.filter(e => e.category_id === category.id && e.is_positive);
+                if (catEvents.length === 0) return null;
+                return (
+                  <View key={category.id}>
+                    <Text style={{ color: '#374151', fontSize: 8, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 6, paddingTop: 8, paddingBottom: 3 }}>
+                      {category.name}
+                    </Text>
+                    {catEvents.map((evt) => (
+                      <TouchableOpacity
+                        key={evt.id}
+                        onPress={() => handleEventPress(evt)}
+                        activeOpacity={0.6}
+                        style={{ alignItems: 'center', padding: 8, borderBottomWidth: 1, borderBottomColor: '#0f172a', gap: 3 }}
+                      >
+                        <Icon name={evt.icon as any} size={22} color="#22c55e" />
+                        <Text style={{ color: '#d1d5db', fontSize: 9, textAlign: 'center', lineHeight: 12 }} numberOfLines={2}>
+                          {evt.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Player Selection Popover */}
         {selectedPositionSlot && availablePlayers.length > 0 && !selectedPlayerFromBench && (
@@ -604,9 +705,9 @@ export function LiveScoutScreen() {
                 {availablePlayers.map((player) => (
                   <BenchPlayerCard
                     key={player.player_id}
-                    playerName={player.player_name}
-                    playerNumber={player.player_number}
-                    photoUri={player.photo_uri}
+                    playerName={player.player_name ?? null}
+                    playerNumber={player.player_number ?? null}
+                    photoUri={player.photo_uri ?? null}
                     benchStartTs={benchStartTimestamps.current[player.player_id]}
                     onPress={() => handlePlayerSelect(player)}
                   />
@@ -622,334 +723,127 @@ export function LiveScoutScreen() {
           </Popover>
         )}
 
-        {/* Events Modal */}
-        {showEventsModal && live.selectedPlayerId && (
-          <View 
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0,0,0,0.85)',
-              justifyContent: 'center',
-              alignItems: 'center',
-              zIndex: 100,
-            }}
-          >
-            <Pressable 
-              style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-              onPress={() => setShowEventsModal(false)}
-            />
+      </View>
 
-            {/* Bench History (absolute top-left) */}
-            {(() => {
-              const selId = live.selectedPlayerId;
-              if (!match || !selId) return null;
-              const periods = benchRepo.getPlayerBenchPeriods(match.id, selId);
-              if (periods.length === 0) return null;
-              const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
-              return (
-                <View
-                  style={{
-                    position: 'absolute',
-                    top: 16,
-                    left: 16,
-                    zIndex: 110,
-                    backgroundColor: 'rgba(17,24,39,0.95)',
-                    borderRadius: 10,
-                    padding: 10,
-                    minWidth: 160,
-                    borderWidth: 1,
-                    borderColor: '#374151',
-                  }}
-                >
-                  <Text style={{ color: '#9ca3af', fontSize: 10, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>
-                    Histórico no Banco
-                  </Text>
-                  {periods.map((period, idx) => {
-                    const durationSec = period.start_timestamp
-                      ? period.end_timestamp
-                        ? Math.floor((period.end_timestamp - period.start_timestamp) / 1000)
-                        : Math.floor((Date.now() - period.start_timestamp) / 1000)
-                      : period.end_minute !== null && period.end_second !== null
-                        ? (period.end_minute * 60 + period.end_second) - (period.start_minute * 60 + period.start_second)
-                        : null;
-                    return (
-                      <View key={idx} style={{ marginBottom: idx < periods.length - 1 ? 6 : 0 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                          <Icon name="arrow-down-circle-outline" size={13} color="#f59e0b" />
-                          <Text style={{ color: '#d1d5db', fontSize: 12 }}>Saiu {fmt(period.start_minute * 60 + period.start_second)}</Text>
-                        </View>
-                        {period.end_minute !== null ? (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                            <Icon name="arrow-up-circle-outline" size={13} color="#22c55e" />
-                            <Text style={{ color: '#d1d5db', fontSize: 12 }}>Voltou {fmt(period.end_minute * 60 + period.end_second!)}</Text>
-                          </View>
-                        ) : null}
-                        {durationSec !== null && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Icon name="timer-outline" size={13} color={period.end_minute !== null ? '#6b7280' : '#f59e0b'} />
-                            <Text style={{ color: period.end_minute !== null ? '#9ca3af' : '#fbbf24', fontSize: 12, fontFamily: 'monospace', fontWeight: '700' }}>
-                              {fmt(durationSec)} fora
-                            </Text>
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-              );
-            })()}
-
-            {/* Player Avatar (Center) */}
-            <Animated.View
-              style={{
-                transform: [{ scale: modalScaleAnim }],
-                opacity: modalOpacityAnim,
-                alignItems: 'center',
-              }}
-            >
-              {(() => {
-                const selectedPlayer = positionedPlayers.find(
-                  p => p.player.player_id === live.selectedPlayerId
-                )?.player;
-                
-                if (!selectedPlayer) return null;
-                
-                const playerEvents = live.events
-                  .filter(e => e.player_id === selectedPlayer.player_id)
-                  .slice(-5)
-                  .reverse();
-                
-                return (
-                  <View className="items-center mb-8">
-                    <View style={{ position: 'relative' }}>
-                      <View 
-                        style={{
-                          shadowColor: '#3B82F6',
-                          shadowOffset: { width: 0, height: 0 },
-                          shadowOpacity: 0.8,
-                          shadowRadius: 20,
-                          elevation: 20,
-                        }}
-                      >
-                        <PlayerAvatar 
-                          photoUri={selectedPlayer.photo_uri}
-                          playerNumber={selectedPlayer.player_number ?? 0}
-                          size={230}
-                        />
-                      </View>
+      {/* ─── Bottom Action Bar ─────────────────────────────────────────────────── */}
+      {showEventsModal && live.selectedPlayerId && !showSwapPanel && (() => {
+        const selId = live.selectedPlayerId;
+        const selPlayer = positionedPlayers.find(p => p.player.player_id === selId)?.player;
+        const benchPeriods = match && selPlayer ? benchRepo.getPlayerBenchPeriods(match.id, selPlayer.player_id) : [];
+        const fmt = (s: number) => `${Math.floor(s / 60)}′${(s % 60).toString().padStart(2, '0')}`;
+        return (
+        <View style={{ backgroundColor: '#0b1120', borderTopWidth: 1, borderTopColor: '#1f2937' }}>
+          {/* Player events list with delete */}
+          {(() => {
+            const playerEvts = live.events.filter(e => e.player_id === selId).slice().reverse();
+            if (playerEvts.length === 0) return null;
+            return (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ borderBottomWidth: 1, borderBottomColor: '#1f2937' }} contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12, gap: 8, flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 4 }}>Eventos:</Text>
+                {playerEvts.map((evt) => (
+                  <View key={evt.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: evt.is_positive ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', borderRadius: 8, paddingLeft: 9, paddingRight: 3, paddingVertical: 8, borderWidth: 1, borderColor: evt.is_positive ? '#22c55e' : '#ef4444' }}>
+                    <View style={{ backgroundColor: evt.period === 2 ? '#1e3a5f' : '#1a1a2e', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
+                      <Text style={{ color: evt.period === 2 ? '#60a5fa' : '#a78bfa', fontSize: 9, fontWeight: '800' }}>{evt.period === 2 ? '2T' : '1T'}</Text>
                     </View>
-                    <Text className="text-white text-3xl font-bold mt-4">
-                      {selectedPlayer.player_name ?? 'Sem nome'}
-                    </Text>
-                    <Text className="text-gray-400 text-base">
-                      #{selectedPlayer.player_number}
-                    </Text>
-                    {/* Swap button */}
+                    <Icon name={evt.event_icon as any} size={16} color={evt.is_positive ? '#22c55e' : '#ef4444'} />
+                    <Text style={{ color: '#d1d5db', fontSize: 12, maxWidth: 80 }} numberOfLines={1}>{evt.event_name}</Text>
+                    <Text style={{ color: '#6b7280', fontSize: 10, fontFamily: 'monospace' }}> {evt.minute}′{String(evt.second).padStart(2,'0')}</Text>
                     <TouchableOpacity
-                      onPress={() => setShowSwapPanel(true)}
-                      style={{
-                        marginTop: 12,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 10,
-                        backgroundColor: '#ffffff',
-                        borderRadius: 99,
-                        paddingHorizontal: 28,
-                        paddingVertical: 14,
-                        elevation: 4,
-                      }}
+                      onPress={() => Alert.alert('Apagar evento', `Remover "${evt.event_name}"?`, [
+                        { text: 'Cancelar', style: 'cancel' },
+                        { text: 'Apagar', style: 'destructive', onPress: () => deleteEvent(evt.id) },
+                      ])}
+                      style={{ padding: 5 }}
                     >
-                      <Icon name="swap-horizontal" size={26} color="#1f2937" />
-                      <Text style={{ color: '#1f2937', fontWeight: '700', fontSize: 20 }}>Trocar jogador</Text>
+                      <Icon name="close-circle" size={18} color="#6b7280" />
                     </TouchableOpacity>
-
-                    {/* Swap Panel */}
-                    {showSwapPanel && (() => {
-                      const benchPlayers = matchPlayers.filter(
-                        mp => !positionedPlayers.some(pp => pp.player.player_id === mp.player_id)
-                          && mp.player_id !== live.selectedPlayerId
-                      );
-                      return (
-                        <View style={{ marginTop: 12, backgroundColor: 'rgba(17,24,39,0.95)', borderRadius: 12, padding: 12, borderWidth: 1, borderColor: '#374151', width: screenWidth * 0.9 }}>
-                          <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, textAlign: 'center' }}>
-                            Escolha quem entra
-                          </Text>
-                          {benchPlayers.length === 0 ? (
-                            <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: 13 }}>Nenhum reserva disponível</Text>
-                          ) : (
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                              <View style={{ flexDirection: 'row', gap: 10 }}>
-                                {benchPlayers.map(player => (
-                                  <BenchPlayerCard
-                                    key={player.player_id}
-                                    playerName={player.player_name}
-                                    playerNumber={player.player_number}
-                                    photoUri={player.photo_uri}
-                                    benchStartTs={benchStartTimestamps.current[player.player_id]}
-                                    onPress={() => handleSwapPlayer(player)}
-                                  />
-                                ))}
-                              </View>
-                            </ScrollView>
-                          )}
-                          <TouchableOpacity onPress={() => setShowSwapPanel(false)} style={{ marginTop: 12, alignSelf: 'stretch', backgroundColor: '#374151', borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}>
-                            <Text style={{ color: '#d1d5db', fontSize: 15, fontWeight: '600' }}>Cancelar troca</Text>
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    })()}
-                    
-                    {/* Recent Events */}}
-                    {playerEvents.length > 0 && (
-                      <View className="mt-4 w-full px-4">
-                        <Text className="text-gray-400 text-sm uppercase tracking-wide mb-2 text-center">
-                          Últimos Eventos ({playerEvents.length})
-                        </Text>
-                        <View className="flex-row flex-wrap justify-center gap-2">
-                          {playerEvents.map((event, idx) => (
-                            <View
-                              key={idx}
-                              style={{
-                                backgroundColor: event.is_positive ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                                borderWidth: 1,
-                                borderColor: event.is_positive ? '#22C55E' : '#EF4444',
-                                borderRadius: 8,
-                                paddingHorizontal: 8,
-                                paddingVertical: 4,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                gap: 4,
-                              }}
-                            >
-                              <Icon name={event.event_icon as any} size={14} color={event.is_positive ? '#22C55E' : '#EF4444'} />
-                              <Text className="text-white text-xs">
-                                {event.event_name}
-                              </Text>
-                            </View>
-                          ))}
-                        </View>
-                      </View>
-                    )}
+                  </View>
+                ))}
+              </ScrollView>
+            );
+          })()}
+          {/* Bench history */}
+          {benchPeriods.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingTop: 10, alignItems: 'center' }}>
+              <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 2 }}>Banco:</Text>
+              {benchPeriods.map((p, idx) => {
+                const startSec = p.start_minute * 60 + p.start_second;
+                const endSec = p.end_minute !== null ? p.end_minute * 60 + p.end_second! : null;
+                const durSec = p.start_timestamp
+                  ? p.end_timestamp
+                    ? Math.floor((p.end_timestamp - p.start_timestamp) / 1000)
+                    : Math.floor((Date.now() - p.start_timestamp) / 1000)
+                  : endSec !== null ? endSec - startSec : null;
+                const isActive = p.end_minute === null;
+                if (durSec === null) return null;
+                return (
+                  <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isActive ? 'rgba(245,158,11,0.1)' : 'rgba(55,65,81,0.4)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: isActive ? '#f59e0b' : '#374151' }}>
+                    <Icon name="timer-outline" size={11} color={isActive ? '#fbbf24' : '#6b7280'} />
+                    <Text style={{ color: isActive ? '#fbbf24' : '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{fmt(durSec)}</Text>
                   </View>
                 );
-              })()}
-
-              {/* Events Grid */}
-              <View style={{ width: screenWidth * 0.9, alignSelf: 'center' }}>
-                <ScrollView 
-                  showsVerticalScrollIndicator={false}
-                  style={{ maxHeight: screenHeight * 0.5 }}
-                  contentContainerStyle={{ paddingBottom: 20 }}
-                >
-                  {categories.map((category) => {
-                    const categoryEvents = events.filter(e => e.category_id === category.id);
-                    if (categoryEvents.length === 0) return null;
-                    
-                    return (
-                      <View key={category.id} className="mb-6">
-                        <Text className="text-gray-400 text-sm font-semibold mb-3 uppercase tracking-wider text-center">
-                          {category.name}
-                        </Text>
-                        <View className="flex-row flex-wrap justify-center gap-3">
-                          {[...categoryEvents].sort((a, b) => (b.is_positive ? 1 : 0) - (a.is_positive ? 1 : 0)).map((event) => (
-                            <TouchableOpacity
-                              key={event.id}
-                              onPress={() => handleEventPress(event)}
-                              style={{
-                                width: 90,
-                                height: 90,
-                                backgroundColor: event.is_positive ? '#16a34a' : '#dc2626',
-                                borderRadius: 12,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                shadowColor: '#000',
-                                shadowOffset: { width: 0, height: 4 },
-                                shadowOpacity: 0.3,
-                                shadowRadius: 8,
-                                elevation: 8,
-                              }}
-                            >
-                              <Icon 
-                                name={event.icon as any} 
-                                size={32} 
-                                color="#ffffff" 
-                              />
-                              <Text 
-                                className="text-white text-sm font-medium mt-2 text-center"
-                                numberOfLines={2}
-                                style={{ lineHeight: 16 }}
-                              >
-                                {event.name}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </View>
-                      </View>
-                    );
-                  })}
-                </ScrollView>
-
-                {/* Action Buttons */}
-                <View className="flex-row gap-2 mt-4">
-                  <TouchableOpacity
-                    onPress={handleSendToBench}
-                    className="flex-1 bg-amber-600 rounded-lg"
-                    style={{
-                      paddingVertical: 16,
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 2 },
-                      shadowOpacity: 0.3,
-                      shadowRadius: 4,
-                      elevation: 4,
-                    }}
-                  >
-                    <View className="flex-row items-center justify-center gap-2">
-                      <Icon name="seat-outline" size={22} color="#ffffff" />
-                      <Text className="text-white text-xl text-center font-medium">
-                        Enviar para Reserva
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={handleRemovePlayer}
-                    className="bg-red-600 rounded-lg"
-                    style={{
-                      paddingVertical: 16,
-                      paddingHorizontal: 40,
-                      shadowColor: '#000',
-                      shadowOffset: { width: 0, height: 2 },
-                      shadowOpacity: 0.3,
-                      shadowRadius: 4,
-                      elevation: 4,
-                    }}
-                  >
-                    <Icon name="close-circle-outline" size={32} color="#ffffff" />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Close Button */}
-                <TouchableOpacity
-                  onPress={() => setShowEventsModal(false)}
-                  className="bg-gray-700 rounded-full py-3 mt-3"
-                  style={{
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 2 },
-                    shadowOpacity: 0.3,
-                    shadowRadius: 4,
-                    elevation: 4,
-                  }}
-                >
-                  <Text className="text-white text-base text-center font-medium">Cancelar</Text>
-                </TouchableOpacity>
-              </View>
-            </Animated.View>
+              })}
+            </View>
+          )}
+          {/* Action buttons */}
+          <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 12, paddingTop: 10, paddingBottom: insets.bottom + 10 }}>
+          <TouchableOpacity
+            onPress={() => setShowSwapPanel(true)}
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1e3a5f', borderRadius: 12, paddingVertical: 14, borderWidth: 1.5, borderColor: '#3b82f6', elevation: 4 }}
+          >
+            <Icon name="swap-horizontal" size={24} color="#60a5fa" />
+            <Text style={{ color: '#60a5fa', fontSize: 14, fontWeight: '700' }}>Trocar</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleRemovePlayer}
+            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#2a1515', borderRadius: 12, paddingVertical: 14, borderWidth: 1.5, borderColor: '#ef4444', elevation: 4 }}
+          >
+            <Icon name="account-remove-outline" size={24} color="#f87171" />
+            <Text style={{ color: '#f87171', fontSize: 14, fontWeight: '700' }}>Remover</Text>
+          </TouchableOpacity>
           </View>
-        )}
-      </View>
+        </View>
+        );
+      })()}
+
+      {/* ─── Swap Panel Overlay ───────────────────────────────────────────────── */}
+      {showEventsModal && showSwapPanel && live.selectedPlayerId && (() => {
+        const benchPlayers = matchPlayers.filter(
+          mp => !positionedPlayers.some(pp => pp.player.player_id === mp.player_id)
+            && mp.player_id !== live.selectedPlayerId
+        );
+        return (
+          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15,23,42,0.97)', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: insets.bottom + 16, zIndex: 50, borderTopWidth: 1, borderTopColor: '#374151' }}>
+            <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, textAlign: 'center' }}>
+              Escolha quem entra
+            </Text>
+            {benchPlayers.length === 0 ? (
+              <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: 13 }}>Nenhum reserva disponível</Text>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  {benchPlayers.map(player => (
+                    <BenchPlayerCard
+                      key={player.player_id}
+                      playerName={player.player_name ?? null}
+                      playerNumber={player.player_number ?? null}
+                      photoUri={player.photo_uri ?? null}
+                      benchStartTs={benchStartTimestamps.current[player.player_id]}
+                      onPress={() => handleSwapPlayer(player)}
+                    />
+                  ))}
+                </View>
+              </ScrollView>
+            )}
+            <TouchableOpacity
+              onPress={() => setShowSwapPanel(false)}
+              style={{ marginTop: 12, alignSelf: 'stretch', backgroundColor: '#374151', borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}
+            >
+              <Text style={{ color: '#d1d5db', fontSize: 15, fontWeight: '600' }}>Cancelar troca</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })()}
     </View>
   );
 }

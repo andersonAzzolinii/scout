@@ -19,7 +19,8 @@ export function getMatchEvents(matchId: string): MatchEvent[] {
      JOIN scout_events se ON me.event_id = se.id
      JOIN teams t ON me.team_id = t.id
      WHERE me.match_id = ?
-     ORDER BY me.minute ASC, me.second ASC`,
+     ORDER BY me.period ASC, me.minute ASC, me.second ASC`,
+    // Note: period column added via migration; defaults to 1 for old rows
     [matchId]
   );
 }
@@ -27,8 +28,8 @@ export function getMatchEvents(matchId: string): MatchEvent[] {
 export function insertMatchEvent(event: Omit<MatchEvent, 'created_at' | 'player_name' | 'player_number' | 'event_name' | 'event_icon' | 'event_type' | 'is_positive' | 'team_name'>): void {
   const db = getDatabase();
   db.runSync(
-    `INSERT INTO match_events (id, match_id, team_id, player_id, event_id, minute, second, x, y)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO match_events (id, match_id, team_id, player_id, event_id, minute, second, period, x, y)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       event.id,
       event.match_id,
@@ -37,6 +38,7 @@ export function insertMatchEvent(event: Omit<MatchEvent, 'created_at' | 'player_
       event.event_id,
       event.minute,
       event.second,
+      event.period ?? 1,
       event.x ?? null,
       event.y ?? null,
     ]

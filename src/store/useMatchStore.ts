@@ -19,6 +19,7 @@ interface MatchStore {
   endLiveSession: () => void;
   setSelectedPlayer: (playerId: string, teamId: string) => void;
   addLiveEvent: (event: MatchEvent) => void;
+  deleteEvent: (id: string) => void;
   undoLastEvent: () => void;
   setTimer: (elapsedSeconds: number, isRunning: boolean) => void;
   loadLiveEvents: (matchId: string) => void;
@@ -97,6 +98,15 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
       live: {
         ...state.live,
         events: [...state.live.events, event],
+      },
+    }));
+  },
+  deleteEvent: (id) => {
+    eventRepo.deleteMatchEvent(id);
+    set((state) => ({
+      live: {
+        ...state.live,
+        events: state.live.events.filter((e) => e.id !== id),
       },
     }));
   },

@@ -57,7 +57,7 @@ export function PositionButton({
       }
     });
     
-    return Array.from(groups.values()).slice(0, 3); // Max 3 badges
+    return Array.from(groups.values());
   }, [playerEvents]);
 
   React.useEffect(() => {
@@ -93,33 +93,44 @@ export function PositionButton({
       ]}
     >
       {isOccupied ? (
-        <View style={styles.avatarContainer}>
-          <PlayerAvatar 
-            photoUri={player.photo_uri}
-            playerNumber={player.player_number ?? 0}
-            size={144}
-          />
-          <Text style={styles.playerName} numberOfLines={1}>
-            {(player.player_name ?? 'Sem nome').split(' ')[0]}
-          </Text>
-          
-          {/* Event Badges */}
-          {eventGroups.length > 0 && (
-            <View style={styles.eventBadgesContainer}>
-              {eventGroups.map((group, idx) => (
-                <View
-                  key={idx}
-                  style={[
-                    styles.eventBadge,
-                    { backgroundColor: group.isPositive ? '#16a34a' : '#dc2626' },
-                  ]}
-                >
-                  <Icon name={group.icon as any} size={12} color="#ffffff" />
-                  <Text style={styles.eventBadgeCount}>{group.count}</Text>
-                </View>
-              ))}
-            </View>
-          )}
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {/* Negative events — left column */}
+          <View style={{ flexDirection: 'column', gap: 4, alignItems: 'flex-end', marginRight: 4, minWidth: 36 }}>
+            {eventGroups.filter(g => !g.isPositive).map((group, idx) => (
+              <View
+                key={idx}
+                style={[styles.eventBadge, { backgroundColor: '#dc2626' }]}
+              >
+                <Icon name={group.icon as any} size={12} color="#ffffff" />
+                <Text style={styles.eventBadgeCount}>{group.count}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Player avatar + name */}
+          <View style={styles.avatarContainer}>
+            <PlayerAvatar 
+              photoUri={player.photo_uri}
+              playerNumber={player.player_number ?? 0}
+              size={144}
+            />
+            <Text style={styles.playerName} numberOfLines={1}>
+              {(player.player_name ?? 'Sem nome').split(' ')[0]}
+            </Text>
+          </View>
+
+          {/* Positive events — right column */}
+          <View style={{ flexDirection: 'column', gap: 4, alignItems: 'flex-start', marginLeft: 4, minWidth: 36 }}>
+            {eventGroups.filter(g => g.isPositive).map((group, idx) => (
+              <View
+                key={idx}
+                style={[styles.eventBadge, { backgroundColor: '#16a34a' }]}
+              >
+                <Icon name={group.icon as any} size={12} color="#ffffff" />
+                <Text style={styles.eventBadgeCount}>{group.count}</Text>
+              </View>
+            ))}
+          </View>
         </View>
       ) : (
         <PlayerAvatar 

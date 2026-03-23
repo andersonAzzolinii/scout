@@ -93,6 +93,7 @@ export interface MatchEvent {
   event_id: string;
   minute: number;
   second: number;
+  period?: number;
   x: number | null;
   y: number | null;
   created_at: string;
