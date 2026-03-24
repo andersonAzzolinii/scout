@@ -5,12 +5,14 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HomeScreen } from '@/screens/home/HomeScreen';
+import { DashboardScreen } from '@/screens/dashboard/DashboardScreen';
 import { MatchesListScreen } from '@/screens/matches/MatchesListScreen';
 import { TeamsListScreen } from '@/screens/teams/TeamsListScreen';
 import { ProfilesListScreen } from '@/screens/profiles/ProfilesListScreen';
 
 export type MainTabParamList = {
   Home: undefined;
+  Dashboard: undefined;
   Matches: undefined;
   Teams: { openModal?: boolean } | undefined;
   Profiles: { openModal?: boolean } | undefined;
@@ -68,6 +70,16 @@ export function MainTabNavigator() {
           tabBarLabel: 'Início',
           tabBarIcon: ({ color, size }) => (
             <Icon name="home-outline" color={color} size={size} />
+          ),
+        }}
+      />
+      <Tab.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{
+          tabBarLabel: 'Dashboard',
+          tabBarIcon: ({ color, size }) => (
+            <Icon name="chart-line" color={color} size={size} />
           ),
         }}
       />
