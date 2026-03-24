@@ -93,6 +93,8 @@ export function LiveScoutScreen() {
     deleteEvent,
     undoLastEvent,
     setTimer,
+    saveBenchElapsed,
+    clearBenchElapsed,
   } = useMatchStore();
 
   const [categories, setCategories] = useState<ScoutCategory[]>([]);
@@ -131,11 +133,29 @@ export function LiveScoutScreen() {
     if (!match) return;
     startLiveSession(match);
 
+    // Restore bench timers — resume from the paused elapsed if the screen was previously left
+    benchRepo.getActiveBenchPlayers(match.id).forEach((p) => {
+      const pausedSec = live.benchPausedElapsed[p.player_id] ?? 0;
+      benchStartTimestamps.current[p.player_id] = Date.now() - pausedSec * 1000;
+    });
+
     const cats = profileRepo.getCategoriesByProfile(match.profile_id);
     const evts = profileRepo.getEventsByProfile(match.profile_id);
     setCategories(cats);
     setEvents(evts);
   }, [matchId, startLiveSession]);
+
+  // On unmount: save each active bench player's elapsed so it can be restored next visit
+  useEffect(() => {
+    return () => {
+      const saved: Record<string, number> = {};
+      Object.entries(benchStartTimestamps.current).forEach(([id, ts]) => {
+        saved[id] = Math.floor((Date.now() - ts) / 1000);
+      });
+      if (Object.keys(saved).length > 0) saveBenchElapsed(saved);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const match = live.match;
   const matchPlayers = live.players;
@@ -225,6 +245,7 @@ export function LiveScoutScreen() {
           const second = elapsed % 60;
           benchRepo.endBenchPeriod(match.id, selectedPlayerFromBench.player_id, minute, second);
           delete benchStartTimestamps.current[selectedPlayerFromBench.player_id];
+          clearBenchElapsed(selectedPlayerFromBench.player_id);
         }
       }
       
@@ -255,6 +276,7 @@ export function LiveScoutScreen() {
       const second = elapsed % 60;
       benchRepo.endBenchPeriod(match.id, player.player_id, minute, second);
       delete benchStartTimestamps.current[player.player_id];
+      clearBenchElapsed(player.player_id);
     }
     
     setPositionedPlayers([...positionedPlayers, { 
@@ -333,6 +355,7 @@ export function LiveScoutScreen() {
     if (isOnBench) {
       benchRepo.endBenchPeriod(match.id, incomingPlayer.player_id, minute, second);
       delete benchStartTimestamps.current[incomingPlayer.player_id];
+      clearBenchElapsed(incomingPlayer.player_id);
     }
 
     const newPositions = outgoingPosition != null
@@ -766,23 +789,43 @@ export function LiveScoutScreen() {
           {benchPeriods.length > 0 && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingTop: 10, alignItems: 'center' }}>
               <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 2 }}>Banco:</Text>
-              {benchPeriods.map((p, idx) => {
-                const startSec = p.start_minute * 60 + p.start_second;
-                const endSec = p.end_minute !== null ? p.end_minute * 60 + p.end_second! : null;
-                const durSec = p.start_timestamp
-                  ? p.end_timestamp
-                    ? Math.floor((p.end_timestamp - p.start_timestamp) / 1000)
-                    : Math.floor((Date.now() - p.start_timestamp) / 1000)
-                  : endSec !== null ? endSec - startSec : null;
-                const isActive = p.end_minute === null;
-                if (durSec === null) return null;
+              {(() => {
+                let totalSec = 0;
+                const chips = benchPeriods.map((p, idx) => {
+                  const isActive = p.end_minute === null;
+                  const startSec = p.start_minute * 60 + p.start_second;
+                  const endSec = !isActive ? p.end_minute! * 60 + p.end_second! : null;
+                  const durSec = p.start_timestamp
+                    ? p.end_timestamp
+                      ? Math.floor((p.end_timestamp - p.start_timestamp) / 1000)
+                      : Math.floor((Date.now() - p.start_timestamp) / 1000)
+                    : endSec !== null ? endSec - startSec : 0;
+                  totalSec += durSec;
+                  const startLabel = fmt(startSec);
+                  const endLabel = endSec !== null ? fmt(endSec) : null;
+                  return (
+                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isActive ? 'rgba(245,158,11,0.1)' : 'rgba(55,65,81,0.4)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: isActive ? '#f59e0b' : '#374151' }}>
+                      <Icon name="seat-outline" size={11} color={isActive ? '#fbbf24' : '#6b7280'} />
+                      <Text style={{ color: isActive ? '#fbbf24' : '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{startLabel}</Text>
+                      <Icon name="arrow-right" size={10} color={isActive ? '#f59e0b' : '#4b5563'} />
+                      {endLabel ? (
+                        <Text style={{ color: '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{endLabel}</Text>
+                      ) : (
+                        <Icon name="dots-horizontal" size={12} color="#fbbf24" />
+                      )}
+                    </View>
+                  );
+                });
                 return (
-                  <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isActive ? 'rgba(245,158,11,0.1)' : 'rgba(55,65,81,0.4)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: isActive ? '#f59e0b' : '#374151' }}>
-                    <Icon name="timer-outline" size={11} color={isActive ? '#fbbf24' : '#6b7280'} />
-                    <Text style={{ color: isActive ? '#fbbf24' : '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{fmt(durSec)}</Text>
-                  </View>
+                  <>
+                    {chips}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(99,102,241,0.12)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#6366f1' }}>
+                      <Icon name="sigma" size={11} color="#818cf8" />
+                      <Text style={{ color: '#818cf8', fontSize: 10, fontFamily: 'monospace', fontWeight: '800' }}>{fmt(totalSec)}</Text>
+                    </View>
+                  </>
                 );
-              })}
+              })()}
             </View>
           )}
           {/* Action buttons */}

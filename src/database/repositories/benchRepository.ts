@@ -117,3 +117,17 @@ export function isPlayerOnBench(matchId: string, playerId: string): boolean {
 
   return (result?.count ?? 0) > 0;
 }
+
+/**
+ * Retorna os jogadores atualmente no banco com seus timestamps de entrada (wall-clock)
+ */
+export function getActiveBenchPlayers(
+  matchId: string
+): { player_id: string; start_timestamp: number }[] {
+  const db = getDatabase();
+  return db.getAllSync<{ player_id: string; start_timestamp: number }>(
+    `SELECT player_id, start_timestamp FROM bench_periods
+     WHERE match_id = ? AND end_minute IS NULL`,
+    [matchId]
+  );
+}

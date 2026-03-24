@@ -10,7 +10,10 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.scout.futsal"
+      "bundleIdentifier": "com.scout.futsal",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,6 +25,11 @@
       "expo-sqlite",
       "expo-asset",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "cd315425-399b-47b0-a93f-a3af7a8179f5"
+      }
+    }
   }
 }

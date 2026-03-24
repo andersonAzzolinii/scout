@@ -22,6 +22,9 @@ interface MatchStore {
   deleteEvent: (id: string) => void;
   undoLastEvent: () => void;
   setTimer: (elapsedSeconds: number, isRunning: boolean) => void;
+  setPeriod: (period: 0 | 1 | 2) => void;
+  saveBenchElapsed: (byPlayerId: Record<string, number>) => void;
+  clearBenchElapsed: (playerId: string) => void;
   loadLiveEvents: (matchId: string) => void;
 }
 
@@ -33,6 +36,8 @@ const defaultLive: LiveMatchState = {
   selectedTeamId: null,
   elapsedSeconds: 0,
   isRunning: false,
+  period: 1,
+  benchPausedElapsed: {},
 };
 
 export const useMatchStore = create<MatchStore>((set, get) => ({
@@ -73,16 +78,16 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
   },
 
   startLiveSession: (match) => {
+    const { live } = get();
     const events = eventRepo.getMatchEvents(match.id);
     const players = matchRepo.getMatchPlayers(match.id);
-    set({
-      live: {
-        ...defaultLive,
-        match,
-        events,
-        players,
-      },
-    });
+    if (live.match?.id === match.id) {
+      // Same match — refresh data only, preserve timer/period state
+      set((state) => ({ live: { ...state.live, match, events, players } }));
+    } else {
+      // New match — full reset
+      set({ live: { ...defaultLive, match, events, players } });
+    }
   },
   endLiveSession: () => {
     set({ live: defaultLive });
@@ -124,6 +129,24 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
   },
   setTimer: (elapsedSeconds, isRunning) => {
     set((state) => ({ live: { ...state.live, elapsedSeconds, isRunning } }));
+  },
+  setPeriod: (period) => {
+    set((state) => ({ live: { ...state.live, period } }));
+  },
+  saveBenchElapsed: (byPlayerId) => {
+    set((state) => ({
+      live: {
+        ...state.live,
+        benchPausedElapsed: { ...state.live.benchPausedElapsed, ...byPlayerId },
+      },
+    }));
+  },
+  clearBenchElapsed: (playerId) => {
+    set((state) => {
+      const next = { ...state.live.benchPausedElapsed };
+      delete next[playerId];
+      return { live: { ...state.live, benchPausedElapsed: next } };
+    });
   },
   loadLiveEvents: (matchId) => {
     const events = eventRepo.getMatchEvents(matchId);

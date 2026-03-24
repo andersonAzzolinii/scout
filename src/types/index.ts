@@ -143,6 +143,9 @@ export interface LiveMatchState {
   selectedTeamId: string | null;
   elapsedSeconds: number;
   isRunning: boolean;
+  period: 0 | 1 | 2;
+  /** Accumulated bench seconds per player, saved when screen is left */
+  benchPausedElapsed: Record<string, number>;
 }
 
 // ─── Futsal-specific types ───────────────────────────────────────────────────
