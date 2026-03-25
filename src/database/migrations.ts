@@ -251,6 +251,24 @@ export function runMigrations(): void {
     }
   } catch (e) { console.warn('Migração bench timestamps:', e); }
 
+  // Criar tabela field_periods para rastrear tempo em quadra
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS field_periods (
+      id TEXT PRIMARY KEY NOT NULL,
+      match_id TEXT NOT NULL,
+      player_id TEXT NOT NULL,
+      start_minute INTEGER NOT NULL,
+      start_second INTEGER NOT NULL,
+      end_minute INTEGER,
+      end_second INTEGER,
+      start_timestamp INTEGER,
+      end_timestamp INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+      FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+    );
+  `);
+
   // Migração: adicionar campo venue na tabela teams
   try {
     const teamsInfo2 = db.getAllSync<{ name: string }>(`PRAGMA table_info(teams);`);

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { TouchableOpacity, Text, StyleSheet, View, Animated } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
@@ -15,6 +15,8 @@ interface PositionButtonProps {
   onPlayerPress?: (player: PlayerPosition['player']) => void;
   isSelected?: boolean;
   playerEvents?: MatchEvent[];
+  fieldStartTs?: number;
+  isTimerRunning?: boolean;
 }
 
 /**
@@ -29,6 +31,8 @@ export function PositionButton({
   onPlayerPress,
   isSelected = false,
   playerEvents = [],
+  fieldStartTs,
+  isTimerRunning = false,
 }: PositionButtonProps) {
   const isOccupied = !!player;
   const { size, sizeOccupied, radius, colors, shadow } = POSITION_BUTTON;
@@ -37,16 +41,31 @@ export function PositionButton({
   
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
 
-  // Filter events for goalkeeper position (position 1)
-  const filteredEvents = React.useMemo(() => {
-    // If position is 1 (goalkeeper), filter to show only goalkeeper events
-    if (position === 1) {
-      return playerEvents.filter(event => event.category_id === 'goleiro');
+  // Freeze elapsed when timer pauses; resume live calc when running
+  const [frozenElapsed, setFrozenElapsed] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isTimerRunning && fieldStartTs) {
+      setFrozenElapsed(Math.floor((Date.now() - fieldStartTs) / 1000));
+    } else if (isTimerRunning) {
+      setFrozenElapsed(null);
     }
-    
-    // For all other positions, show all events
-    return playerEvents;
-  }, [position, playerEvents]);
+  }, [isTimerRunning, fieldStartTs]);
+
+  // Tick to re-render timer every second (only when running)
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!fieldStartTs || !isTimerRunning) return;
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, [fieldStartTs, isTimerRunning]);
+
+  const fieldElapsed = !isTimerRunning && frozenElapsed !== null
+    ? frozenElapsed
+    : fieldStartTs ? Math.floor((Date.now() - fieldStartTs) / 1000) : 0;
+  const fieldMinutes = Math.floor(fieldElapsed / 60);
+  const fieldSeconds = fieldElapsed % 60;
+
+  const filteredEvents = playerEvents;
 
   // Group events by type
   const eventGroups = React.useMemo(() => {
@@ -136,7 +155,7 @@ export function PositionButton({
       {isOccupied ? (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           {/* Negative events — left column */}
-          <View style={{ flexDirection: 'column', gap: 4, alignItems: 'flex-end', marginRight: 4, minWidth: 36 }}>
+          <View style={{ flexDirection: 'column', gap: 3, alignItems: 'flex-end', marginRight: 3, minWidth: 23 }}>
             {eventGroups.filter(g => !g.isPositive).map((group, idx) => (
               <View
                 key={idx}
@@ -153,15 +172,22 @@ export function PositionButton({
             <PlayerAvatar 
               photoUri={player.photo_uri}
               playerNumber={player.player_number ?? 0}
-              size={144}
+              size={92}
             />
             <Text style={styles.playerName} numberOfLines={1}>
               {(player.player_name ?? 'Sem nome').split(' ')[0]}
             </Text>
+            {fieldStartTs != null && (
+              <View style={{ backgroundColor: '#15803d', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginTop: 3 }}>
+                <Text style={{ color: '#fff', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>
+                  {fieldMinutes}:{fieldSeconds.toString().padStart(2, '0')}
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Positive events — right column */}
-          <View style={{ flexDirection: 'column', gap: 4, alignItems: 'flex-start', marginLeft: 4, minWidth: 36 }}>
+          <View style={{ flexDirection: 'column', gap: 3, alignItems: 'flex-start', marginLeft: 3, minWidth: 23 }}>
             {eventGroups.filter(g => g.isPositive).map((group, idx) => (
               <View
                 key={idx}
@@ -199,9 +225,9 @@ const styles = StyleSheet.create({
   },
   playerName: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: 10,
     fontWeight: 'bold',
-    marginTop: 5,
+    marginTop: 3,
     textShadowColor: '#000',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,

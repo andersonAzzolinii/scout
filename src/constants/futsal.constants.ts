@@ -31,9 +31,9 @@ export const FIXED_POSITIONS: Record<number, PositionCoordinates> = {
  * Position button styling
  */
 export const POSITION_BUTTON = {
-  size: 70,       // Size when empty
-  sizeOccupied: 192,  // Size when player is positioned (to fit photo + name)
-  radius: 35,
+  size: 45,       // Size when empty
+  sizeOccupied: 123,  // Size when player is positioned (to fit photo + name)
+  radius: 22,
   colors: {
     empty: 'rgba(239, 68, 68, 0.85)',      // red
     occupied: 'rgba(59, 130, 246, 0.95)',  // blue

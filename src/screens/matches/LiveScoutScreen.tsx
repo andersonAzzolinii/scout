@@ -25,6 +25,7 @@ import type { ScoutCategory, ScoutEvent, MatchEvent, PlayerPosition } from '@/ty
 import * as matchRepo from '@/database/repositories/matchRepository';
 import * as profileRepo from '@/database/repositories/profileRepository';
 import * as benchRepo from '@/database/repositories/benchRepository';
+import * as fieldRepo from '@/database/repositories/fieldRepository';
 import { EVENT_CATEGORIES } from '@/constants/eventCategories';
 
 type Route = RouteProp<RootStackParamList, 'LiveScout'>;
@@ -111,6 +112,8 @@ export function LiveScoutScreen() {
   const [showSwapPanel, setShowSwapPanel] = useState(false);
   // wall-clock timestamps (ms) when each player entered the bench
   const benchStartTimestamps = useRef<Record<string, number>>({});
+  // wall-clock timestamps (ms) when each player entered the field
+  const fieldStartTimestamps = useRef<Record<string, number>>({});
   // tick to force re-render every second while players are on bench
   const [, setTick] = useState(0);
   
@@ -138,6 +141,11 @@ export function LiveScoutScreen() {
     benchRepo.getActiveBenchPlayers(match.id).forEach((p) => {
       const pausedSec = live.benchPausedElapsed[p.player_id] ?? 0;
       benchStartTimestamps.current[p.player_id] = Date.now() - pausedSec * 1000;
+    });
+
+    // Restore field timers
+    fieldRepo.getActiveFieldPlayers(match.id).forEach((p) => {
+      fieldStartTimestamps.current[p.player_id] = p.start_timestamp ?? Date.now();
     });
 
     const cats = profileRepo.getCategoriesByProfile(match.profile_id);
@@ -249,6 +257,35 @@ export function LiveScoutScreen() {
     }
   }, [period, showEventsModal]);
 
+  // Quando a partida inicia (period: 0→1) ou retoma o 2º tempo, iniciar field periods
+  // dos jogadores posicionados que ainda não têm period ativo
+  useEffect(() => {
+    if (period === 0 || !match) return;
+    // Só inicia ao começar a rodar
+    if (!isRunning) return;
+    const minute = Math.floor(elapsed / 60);
+    const second = elapsed % 60;
+    positionedPlayers.forEach(({ player }) => {
+      if (!fieldRepo.isPlayerOnField(match.id, player.player_id)) {
+        fieldRepo.startFieldPeriod(match.id, player.player_id, minute, second);
+        fieldStartTimestamps.current[player.player_id] = Date.now();
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, isRunning]);
+
+  // Quando o timer pausa/retoma, ajustar timestamps dos field players (como o bench)
+  useEffect(() => {
+    if (!isRunning) {
+      // Timer pausou: registrar o elapsed de cada jogador em campo para retomar corretamente
+      Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
+        const elapsed = Math.floor((Date.now() - fieldStartTimestamps.current[playerId]) / 1000);
+        fieldStartTimestamps.current[playerId] = Date.now() - elapsed * 1000;
+      });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRunning]);
+
   const handlePositionPress = (position: number, screenX: number, screenY: number) => {
     // Check if position already has a player - if yes, allow changing
     const existingPlayer = positionedPlayers.find((p) => p.position === position);
@@ -284,8 +321,14 @@ export function LiveScoutScreen() {
       // Save position to database
       if (match) {
         matchRepo.updateMatchPlayerPosition(match.id, selectedPlayerFromBench.player_id, position);
+            // Iniciar período em quadra se a partida já tiver começado
+            if (period > 0) {
+              const minute = Math.floor(elapsed / 60);
+              const second = elapsed % 60;
+              fieldRepo.startFieldPeriod(match.id, selectedPlayerFromBench.player_id, minute, second);
+              fieldStartTimestamps.current[selectedPlayerFromBench.player_id] = Date.now();
+            }
       }
-      setSelectedPlayerFromBench(null);
       return;
     }
 
@@ -313,6 +356,13 @@ export function LiveScoutScreen() {
     }]);
     // Save position to database
     matchRepo.updateMatchPlayerPosition(match.id, player.player_id, selectedPositionSlot.position);
+    // Iniciar período em quadra se a partida já tiver começado
+    if (period > 0) {
+      const minute = Math.floor(elapsed / 60);
+      const second = elapsed % 60;
+      fieldRepo.startFieldPeriod(match.id, player.player_id, minute, second);
+      fieldStartTimestamps.current[player.player_id] = Date.now();
+    }
     setSelectedPositionSlot(null);
   };
 
@@ -367,6 +417,10 @@ export function LiveScoutScreen() {
     benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second);
     // Registrar timestamp de wall-clock
     benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
+
+    // Finalizar período em quadra
+    fieldRepo.endFieldPeriod(match.id, live.selectedPlayerId, minute, second);
+    delete fieldStartTimestamps.current[live.selectedPlayerId];
     
     setShowEventsModal(false);
   };
@@ -387,6 +441,9 @@ export function LiveScoutScreen() {
     matchRepo.updateMatchPlayerPosition(match.id, live.selectedPlayerId, null);
     benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second);
     benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
+    // Finalizar período em quadra do jogador que sai
+    fieldRepo.endFieldPeriod(match.id, live.selectedPlayerId, minute, second);
+    delete fieldStartTimestamps.current[live.selectedPlayerId];
 
     // Jogador que entra: encerra timer do banco (se ativo) e ocupa a posição
     const isOnBench = benchRepo.isPlayerOnBench(match.id, incomingPlayer.player_id);
@@ -395,6 +452,9 @@ export function LiveScoutScreen() {
       delete benchStartTimestamps.current[incomingPlayer.player_id];
       clearBenchElapsed(incomingPlayer.player_id);
     }
+    // Iniciar período em quadra do jogador que entra
+    fieldRepo.startFieldPeriod(match.id, incomingPlayer.player_id, minute, second);
+    fieldStartTimestamps.current[incomingPlayer.player_id] = Date.now();
 
     const newPositions = outgoingPosition != null
       ? [...updatedPositions, { player: incomingPlayer, position: outgoingPosition }]
@@ -600,6 +660,11 @@ export function LiveScoutScreen() {
                     benchRepo.endBenchPeriod(match.id, playerId, minute, second);
                     delete benchStartTimestamps.current[playerId];
                   });
+                  // Finalizar todos os períodos em quadra
+                  Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
+                    fieldRepo.endFieldPeriod(match.id, playerId, minute, second);
+                    delete fieldStartTimestamps.current[playerId];
+                  });
                 };
                 if (period === 1) {
                   Alert.alert('Intervalo', 'Encerrar o 1º tempo?', [
@@ -718,13 +783,13 @@ export function LiveScoutScreen() {
 
         {/* Left: Negative Events Panel */}
         {showEventsModal && live.selectedPlayerId && period > 0 && (
-          <View style={{ width: 100, backgroundColor: '#06090f', borderRightWidth: 1, borderRightColor: '#1f2937' }}>
-            <View style={{ paddingVertical: 7, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(239,68,68,0.08)' : 'rgba(251,191,36,0.15)' }}>
-              <Text style={{ color: isRunning ? '#ef4444' : '#fbbf24', fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>ERROS</Text>
+          <View style={{ width: 140, backgroundColor: '#0a0d14', borderRightWidth: 1, borderRightColor: '#1f2937' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(239,68,68,0.07)' : 'rgba(251,191,36,0.10)' }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#ef4444' : '#fbbf24' }} />
+              <Text style={{ color: isRunning ? '#f87171' : '#fbbf24', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>Erros</Text>
               {!isRunning && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
-                  <Icon name="pause" size={8} color="#fbbf24" />
-                  <Text style={{ color: '#fbbf24', fontSize: 7, fontWeight: '700' }}>PAUSADO</Text>
+                <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                  <Icon name="pause" size={9} color="#fbbf24" />
                 </View>
               )}
             </View>
@@ -734,18 +799,20 @@ export function LiveScoutScreen() {
                 if (catEvents.length === 0) return null;
                 return (
                   <View key={category.id}>
-                    <Text style={{ color: '#374151', fontSize: 8, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 6, paddingTop: 8, paddingBottom: 3 }}>
+                    <Text style={{ color: '#4b5563', fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
                       {category.name}
                     </Text>
                     {catEvents.map((evt) => (
                       <TouchableOpacity
                         key={evt.id}
                         onPress={() => handleEventPress(evt)}
-                        activeOpacity={0.6}
-                        style={{ alignItems: 'center', padding: 8, borderBottomWidth: 1, borderBottomColor: '#0f172a', gap: 3 }}
+                        activeOpacity={0.55}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(239,68,68,0.04)' }}
                       >
-                        <Icon name={evt.icon as any} size={22} color="#ef4444" />
-                        <Text style={{ color: '#d1d5db', fontSize: 9, textAlign: 'center', lineHeight: 12 }} numberOfLines={2}>
+                        <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexShrink: 0 }}>
+                          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
+                        </View>
+                        <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
                           {evt.name}
                         </Text>
                       </TouchableOpacity>
@@ -761,7 +828,7 @@ export function LiveScoutScreen() {
         <View className="flex-1 justify-center items-center">
           <FutsalCourt
             width={Math.min(
-              (screenWidth - (showEventsModal && live.selectedPlayerId ? 200 : (availablePlayers.length > 0 ? 120 : 0))) * 0.96,
+              (screenWidth - (showEventsModal && live.selectedPlayerId ? 280 : (availablePlayers.length > 0 ? 120 : 0))) * 0.96,
               (screenHeight - insets.top - 130) * (2 / 3)
             )}
             onPositionPress={handlePositionPress}
@@ -769,18 +836,20 @@ export function LiveScoutScreen() {
             onPlayerPress={handlePlayerPress}
             selectedPlayerId={live.selectedPlayerId}
             getPlayerEvents={getPlayerEvents}
+            getFieldStartTs={(playerId) => fieldStartTimestamps.current[playerId]}
+            isTimerRunning={isRunning}
           />
         </View>
 
         {/* Right: Positive Events Panel */}
         {showEventsModal && live.selectedPlayerId && period > 0 && (
-          <View style={{ width: 100, backgroundColor: '#06090f', borderLeftWidth: 1, borderLeftColor: '#1f2937' }}>
-            <View style={{ paddingVertical: 7, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(34,197,94,0.08)' : 'rgba(251,191,36,0.15)' }}>
-              <Text style={{ color: isRunning ? '#22c55e' : '#fbbf24', fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>ACERTOS</Text>
+          <View style={{ width: 140, backgroundColor: '#0a0d14', borderLeftWidth: 1, borderLeftColor: '#1f2937' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(34,197,94,0.07)' : 'rgba(251,191,36,0.10)' }}>
+              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#22c55e' : '#fbbf24' }} />
+              <Text style={{ color: isRunning ? '#4ade80' : '#fbbf24', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>Acertos</Text>
               {!isRunning && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
-                  <Icon name="pause" size={8} color="#fbbf24" />
-                  <Text style={{ color: '#fbbf24', fontSize: 7, fontWeight: '700' }}>PAUSADO</Text>
+                <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                  <Icon name="pause" size={9} color="#fbbf24" />
                 </View>
               )}
             </View>
@@ -790,18 +859,20 @@ export function LiveScoutScreen() {
                 if (catEvents.length === 0) return null;
                 return (
                   <View key={category.id}>
-                    <Text style={{ color: '#374151', fontSize: 8, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, paddingHorizontal: 6, paddingTop: 8, paddingBottom: 3 }}>
+                    <Text style={{ color: '#4b5563', fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
                       {category.name}
                     </Text>
                     {catEvents.map((evt) => (
                       <TouchableOpacity
                         key={evt.id}
                         onPress={() => handleEventPress(evt)}
-                        activeOpacity={0.6}
-                        style={{ alignItems: 'center', padding: 8, borderBottomWidth: 1, borderBottomColor: '#0f172a', gap: 3 }}
+                        activeOpacity={0.55}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(34,197,94,0.04)' }}
                       >
-                        <Icon name={evt.icon as any} size={22} color="#22c55e" />
-                        <Text style={{ color: '#d1d5db', fontSize: 9, textAlign: 'center', lineHeight: 12 }} numberOfLines={2}>
+                        <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', flexShrink: 0 }}>
+                          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e' }} />
+                        </View>
+                        <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
                           {evt.name}
                         </Text>
                       </TouchableOpacity>
@@ -856,7 +927,8 @@ export function LiveScoutScreen() {
         const selId = live.selectedPlayerId;
         const selPlayer = positionedPlayers.find(p => p.player.player_id === selId)?.player;
         const benchPeriods = match && selPlayer ? benchRepo.getPlayerBenchPeriods(match.id, selPlayer.player_id) : [];
-        const fmt = (s: number) => `${Math.floor(s / 60)}′${(s % 60).toString().padStart(2, '0')}`;
+        const fieldPeriods = match && selPlayer ? fieldRepo.getPlayerFieldPeriods(match.id, selPlayer.player_id) : [];
+        const fmt = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
         return (
         <View style={{ backgroundColor: '#0b1120', borderTopWidth: 1, borderTopColor: '#1f2937' }}>
           {/* Indicador de tempo pausado */}
@@ -880,7 +952,7 @@ export function LiveScoutScreen() {
                     </View>
                     <Icon name={evt.event_icon as any} size={16} color={evt.is_positive ? '#22c55e' : '#ef4444'} />
                     <Text style={{ color: '#d1d5db', fontSize: 12, maxWidth: 80 }} numberOfLines={1}>{evt.event_name}</Text>
-                    <Text style={{ color: '#6b7280', fontSize: 10, fontFamily: 'monospace' }}> {evt.minute}′{String(evt.second).padStart(2,'0')}</Text>
+                    <Text style={{ color: '#6b7280', fontSize: 10, fontFamily: 'monospace' }}> {String(evt.minute).padStart(2,'0')}:{String(evt.second).padStart(2,'0')}</Text>
                     <TouchableOpacity
                       onPress={() => Alert.alert('Apagar evento', `Remover "${evt.event_name}"?`, [
                         { text: 'Cancelar', style: 'cancel' },
@@ -895,6 +967,41 @@ export function LiveScoutScreen() {
               </ScrollView>
             );
           })()}
+          {/* Field history */}
+          {fieldPeriods.length > 0 && (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingTop: 10, alignItems: 'center' }}>
+              <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 2 }}>Quadra:</Text>
+              {(() => {
+                let totalSec = 0;
+                const chips = fieldPeriods.map((p, idx) => {
+                  const isActive = p.end_minute === null;
+                  const endSec = !isActive ? p.end_minute! * 60 + p.end_second! : null;
+                  const durSec = p.start_timestamp
+                    ? p.end_timestamp
+                      ? Math.floor((p.end_timestamp - p.start_timestamp) / 1000)
+                      : Math.floor((Date.now() - p.start_timestamp) / 1000)
+                    : endSec !== null ? endSec - (p.start_minute * 60 + p.start_second) : 0;
+                  totalSec += durSec;
+                  return (
+                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isActive ? 'rgba(21,128,61,0.15)' : 'rgba(55,65,81,0.4)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: isActive ? '#15803d' : '#374151' }}>
+                      <Icon name="run-fast" size={11} color={isActive ? '#4ade80' : '#6b7280'} />
+                      <Text style={{ color: isActive ? '#4ade80' : '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{fmt(durSec)}</Text>
+                      {isActive && <Icon name="dots-horizontal" size={12} color="#4ade80" />}
+                    </View>
+                  );
+                });
+                return (
+                  <>
+                    {chips}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(21,128,61,0.12)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#15803d' }}>
+                      <Icon name="sigma" size={11} color="#4ade80" />
+                      <Text style={{ color: '#4ade80', fontSize: 10, fontFamily: 'monospace', fontWeight: '800' }}>{fmt(totalSec)}</Text>
+                    </View>
+                  </>
+                );
+              })()}
+            </View>
+          )}
           {/* Bench history */}
           {benchPeriods.length > 0 && (
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingTop: 10, alignItems: 'center' }}>
@@ -903,26 +1010,18 @@ export function LiveScoutScreen() {
                 let totalSec = 0;
                 const chips = benchPeriods.map((p, idx) => {
                   const isActive = p.end_minute === null;
-                  const startSec = p.start_minute * 60 + p.start_second;
                   const endSec = !isActive ? p.end_minute! * 60 + p.end_second! : null;
                   const durSec = p.start_timestamp
                     ? p.end_timestamp
                       ? Math.floor((p.end_timestamp - p.start_timestamp) / 1000)
                       : Math.floor((Date.now() - p.start_timestamp) / 1000)
-                    : endSec !== null ? endSec - startSec : 0;
+                    : endSec !== null ? endSec - (p.start_minute * 60 + p.start_second) : 0;
                   totalSec += durSec;
-                  const startLabel = fmt(startSec);
-                  const endLabel = endSec !== null ? fmt(endSec) : null;
                   return (
                     <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isActive ? 'rgba(245,158,11,0.1)' : 'rgba(55,65,81,0.4)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: isActive ? '#f59e0b' : '#374151' }}>
                       <Icon name="seat-outline" size={11} color={isActive ? '#fbbf24' : '#6b7280'} />
-                      <Text style={{ color: isActive ? '#fbbf24' : '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{startLabel}</Text>
-                      <Icon name="arrow-right" size={10} color={isActive ? '#f59e0b' : '#4b5563'} />
-                      {endLabel ? (
-                        <Text style={{ color: '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{endLabel}</Text>
-                      ) : (
-                        <Icon name="dots-horizontal" size={12} color="#fbbf24" />
-                      )}
+                      <Text style={{ color: isActive ? '#fbbf24' : '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{fmt(durSec)}</Text>
+                      {isActive && <Icon name="dots-horizontal" size={12} color="#fbbf24" />}
                     </View>
                   );
                 });
