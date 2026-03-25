@@ -37,11 +37,22 @@ export function PositionButton({
   
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
 
+  // Filter events for goalkeeper position (position 1)
+  const filteredEvents = React.useMemo(() => {
+    // If position is 1 (goalkeeper), filter to show only goalkeeper events
+    if (position === 1) {
+      return playerEvents.filter(event => event.category_id === 'goleiro');
+    }
+    
+    // For all other positions, show all events
+    return playerEvents;
+  }, [position, playerEvents]);
+
   // Group events by type
   const eventGroups = React.useMemo(() => {
     const groups = new Map<string, { icon: string; count: number; isPositive: boolean; name: string }>();
     
-    playerEvents.forEach(event => {
+    filteredEvents.forEach(event => {
       const key = event.event_id;
       const existing = groups.get(key);
       
@@ -58,11 +69,11 @@ export function PositionButton({
     });
     
     return Array.from(groups.values());
-  }, [playerEvents]);
+  }, [filteredEvents]);
 
   React.useEffect(() => {
     Animated.timing(scaleAnim, {
-      toValue: isSelected ? 1.15 : 1,
+      toValue: isSelected ? 1.08 : 1,
       duration: 200,
       useNativeDriver: true,
     }).start();
@@ -79,19 +90,49 @@ export function PositionButton({
   };
 
   return (
-    <TouchableOpacity
-      onPress={handlePress}
-      style={[
-        styles.button,
-        {
-          left: screenX - halfSize,
-          top: screenY - halfSize,
-          width: currentSize,
-          height: currentSize,
-          transform: [{ scale: scaleAnim }],
-        },
-      ]}
-    >
+    <>
+      {/* Glow effect overlay quando selecionado */}
+      {isSelected && (
+        <View
+          style={{
+            position: 'absolute',
+            left: screenX - halfSize - 15,
+            top: screenY - halfSize - 15,
+            width: currentSize + 30,
+            height: currentSize + 30,
+            borderRadius: (currentSize + 30) / 2,
+            backgroundColor: 'rgba(255, 255, 255, 0.15)',
+            shadowColor: '#e5e7eb',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 1,
+            shadowRadius: 18,
+            elevation: 10,
+          }}
+        />
+      )}
+      
+      <TouchableOpacity
+        onPress={handlePress}
+        style={[
+          styles.button,
+          {
+            left: screenX - halfSize,
+            top: screenY - halfSize,
+            width: currentSize,
+            height: currentSize,
+            transform: [{ scale: scaleAnim }],
+            backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+            borderRadius: currentSize / 2,
+            borderWidth: isSelected ? 3 : 0,
+            borderColor: '#f3f4f6',
+            shadowColor: isSelected ? '#e5e7eb' : 'transparent',
+            shadowOffset: { width: 0, height: isSelected ? 6 : 0 },
+            shadowOpacity: isSelected ? 0.7 : 0,
+            shadowRadius: isSelected ? 12 : 0,
+            elevation: isSelected ? 12 : 0,
+          },
+        ]}
+      >
       {isOccupied ? (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           {/* Negative events — left column */}
@@ -141,6 +182,7 @@ export function PositionButton({
         />
       )}
     </TouchableOpacity>
+    </>
   );
 }
 

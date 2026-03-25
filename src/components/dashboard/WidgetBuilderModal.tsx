@@ -12,22 +12,20 @@ import {
 } from 'react-native';
 import { CustomWidget, WidgetType, ComparisonMode } from '@/types/dashboard.types';
 import { 
-  getAvailableEvents, 
   getAvailablePlayers, 
   getAvailableTeams 
 } from '@/database/repositories/statsRepository';
+import { 
+  EVENT_CATEGORIES, 
+  getSentimentColor,
+  type EventCategory 
+} from '@/constants/eventCategories';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onSave: (widget: CustomWidget) => void;
   editingWidget?: CustomWidget;
-}
-
-interface EventOption {
-  id: string;
-  name: string;
-  icon: string;
 }
 
 interface EntityOption {
@@ -59,13 +57,14 @@ export function WidgetBuilderModal({ visible, onClose, onSave, editingWidget }: 
   const [showLegend, setShowLegend] = useState(true);
 
   // Available options
-  const [events, setEvents] = useState<EventOption[]>([]);
   const [entities, setEntities] = useState<EntityOption[]>([]);
+  
+  // Category expansion state
+  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
 
   // Load initial data
   useEffect(() => {
     if (visible) {
-      loadEvents();
       loadEntities(comparisonMode);
       
       if (editingWidget) {
@@ -81,11 +80,6 @@ export function WidgetBuilderModal({ visible, onClose, onSave, editingWidget }: 
       }
     }
   }, [visible, editingWidget, comparisonMode]);
-
-  const loadEvents = () => {
-    const availableEvents = getAvailableEvents();
-    setEvents(availableEvents.map(e => ({ id: e.id, name: e.name, icon: e.icon })));
-  };
 
   const loadEntities = (mode: ComparisonMode) => {
     if (mode === 'players') {
@@ -107,6 +101,33 @@ export function WidgetBuilderModal({ visible, onClose, onSave, editingWidget }: 
     }
   };
 
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories(prev =>
+      prev.includes(categoryId)
+        ? prev.filter(id => id !== categoryId)
+        : [...prev, categoryId]
+    );
+  };
+
+  const selectAllInCategory = (category: EventCategory) => {
+    const categoryEventIds = category.events.map(e => e.id);
+    const allSelected = categoryEventIds.every(id => selectedEventIds.includes(id));
+    
+    if (allSelected) {
+      // Deselect all from this category
+      setSelectedEventIds(prev => prev.filter(id => !categoryEventIds.includes(id)));
+    } else {
+      // Select all from this category
+      const newIds = [...selectedEventIds];
+      categoryEventIds.forEach(id => {
+        if (!newIds.includes(id)) {
+          newIds.push(id);
+        }
+      });
+      setSelectedEventIds(newIds);
+    }
+  };
+
   const resetForm = () => {
     setTitle('');
     setChartType('bar');
@@ -115,6 +136,7 @@ export function WidgetBuilderModal({ visible, onClose, onSave, editingWidget }: 
     setSelectedEntityIds([]);
     setShowValues(true);
     setShowLegend(true);
+    setExpandedCategories([]);
   };
 
   const toggleEvent = (eventId: string) => {
@@ -259,31 +281,107 @@ export function WidgetBuilderModal({ visible, onClose, onSave, editingWidget }: 
           {/* Event Selection */}
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.text }]}>
-              Selecione os Eventos ({selectedEventIds.length}/{events.length})
+              Selecione os Eventos ({selectedEventIds.length})
             </Text>
-            <View style={styles.chipContainer}>
-              {events.map((event) => (
-                <Pressable
-                  key={event.id}
-                  onPress={() => toggleEvent(event.id)}
-                  style={[
-                    styles.chip,
-                    { borderColor: colors.border, backgroundColor: colors.card },
-                    selectedEventIds.includes(event.id) && {
-                      backgroundColor: colors.primary,
-                      borderColor: colors.primary,
-                    },
-                  ]}
-                >
-                  <Text style={[
-                    styles.chipText,
-                    { color: selectedEventIds.includes(event.id) ? '#fff' : colors.text }
-                  ]}>
-                    {event.icon} {event.name}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
+            
+            {EVENT_CATEGORIES.map((category) => {
+              const isExpanded = expandedCategories.includes(category.id);
+              const eventsInCategory = category.events.length;
+              const selectedInCategory = category.events.filter(e => 
+                selectedEventIds.includes(e.id)
+              ).length;
+              const allSelected = selectedInCategory === eventsInCategory;
+              
+              return (
+                <View key={category.id} style={styles.categoryContainer}>
+                  {/* Category Header */}
+                  <Pressable
+                    onPress={() => toggleCategory(category.id)}
+                    style={[styles.categoryHeader, { 
+                      backgroundColor: colors.card,
+                      borderColor: colors.border 
+                    }]}
+                  >
+                    <View style={styles.categoryHeaderLeft}>
+                      <Text style={styles.categoryIcon}>{category.icon}</Text>
+                      <Text style={[styles.categoryName, { color: colors.text }]}>
+                        {category.name}
+                      </Text>
+                      <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>
+                        ({selectedInCategory}/{eventsInCategory})
+                      </Text>
+                    </View>
+                    
+                    <View style={styles.categoryHeaderRight}>
+                      <Pressable
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          selectAllInCategory(category);
+                        }}
+                        style={[styles.selectAllBtn, { 
+                          backgroundColor: allSelected ? colors.primary : 'transparent',
+                          borderColor: colors.border 
+                        }]}
+                      >
+                        <Text style={[styles.selectAllText, { 
+                          color: allSelected ? '#fff' : colors.textSecondary 
+                        }]}>
+                          {allSelected ? '✓ Todos' : 'Todos'}
+                        </Text>
+                      </Pressable>
+                      
+                      <Text style={[styles.chevron, { color: colors.textSecondary }]}>
+                        {isExpanded ? '▼' : '▶'}
+                      </Text>
+                    </View>
+                  </Pressable>
+                  
+                  {/* Category Events */}
+                  {isExpanded && (
+                    <View style={styles.eventList}>
+                      {category.events.map((event) => {
+                        const isSelected = selectedEventIds.includes(event.id);
+                        const sentimentColor = getSentimentColor(event.sentiment);
+                        
+                        return (
+                          <Pressable
+                            key={event.id}
+                            onPress={() => toggleEvent(event.id)}
+                            style={[
+                              styles.eventItem,
+                              { 
+                                backgroundColor: colors.card,
+                                borderColor: isSelected ? sentimentColor : colors.border 
+                              },
+                              isSelected && { 
+                                borderWidth: 2,
+                                backgroundColor: `${sentimentColor}15` 
+                              }
+                            ]}
+                          >
+                            <View style={styles.eventItemLeft}>
+                              <View style={[
+                                styles.sentimentBadge,
+                                { backgroundColor: sentimentColor }
+                              ]}>
+                                <Text style={styles.sentimentText}>{event.sentiment}</Text>
+                              </View>
+                              <Text style={[styles.eventName, { color: colors.text }]}>
+                                {event.name}
+                              </Text>
+                            </View>
+                            
+                            {isSelected && (
+                              <Text style={styles.checkIcon}>✓</Text>
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
           </View>
 
           {/* Entity Selection (if not comparing events) */}
@@ -436,6 +534,92 @@ const styles = StyleSheet.create({
   chipText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  categoryContainer: {
+    marginBottom: 12,
+  },
+  categoryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  categoryHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  categoryHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  categoryIcon: {
+    fontSize: 20,
+  },
+  categoryName: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  categoryCount: {
+    fontSize: 13,
+  },
+  selectAllBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  selectAllText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  chevron: {
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  eventList: {
+    marginTop: 8,
+    gap: 6,
+  },
+  eventItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginLeft: 12,
+  },
+  eventItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  sentimentBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sentimentText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  eventName: {
+    fontSize: 14,
+    flex: 1,
+  },
+  checkIcon: {
+    fontSize: 18,
+    color: '#10b981',
+    fontWeight: 'bold',
   },
   checkboxRow: {
     flexDirection: 'row',

@@ -104,6 +104,7 @@ export interface MatchEvent {
   event_icon?: string;
   event_type?: EventType;
   is_positive?: boolean;
+  category_id?: string;
   team_name?: string;
 }
 

@@ -13,6 +13,7 @@ export function getMatchEvents(matchId: string): MatchEvent[] {
        se.icon AS event_icon,
        se.event_type,
        se.is_positive,
+       se.category_id,
        t.name AS team_name
      FROM match_events me
      JOIN players p ON me.player_id = p.id

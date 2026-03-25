@@ -19,7 +19,9 @@ import { Badge } from '@/components/ui/Badge';
 import { useProfileStore } from '@/store/useProfileStore';
 import { generateId } from '@/utils';
 import type { RootStackParamList } from '@/navigation/RootNavigator';
-import type { ScoutCategory } from '@/types';
+import type { ScoutCategory, ScoutEvent } from '@/types';
+import { EventCatalogModal } from '@/components/profiles/EventCatalogModal';
+import type { EventDefinition } from '@/constants/eventCategories';
 
 type Route = RouteProp<RootStackParamList, 'ProfileDetail'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -28,12 +30,13 @@ export function ProfileDetailScreen() {
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const { profileId } = route.params;
-  const { profiles, categories, events, loadCategories, loadEventsByProfile, createCategory, deleteCategory } = useProfileStore();
+  const { profiles, categories, events, loadCategories, loadEventsByProfile, createCategory, deleteCategory, createEvent } = useProfileStore();
 
   const profile = profiles.find((p) => p.id === profileId);
 
   const [showCatModal, setShowCatModal] = useState(false);
   const [newCatName, setNewCatName] = useState('');
+  const [showCatalog, setShowCatalog] = useState(false);
 
   useEffect(() => {
     loadCategories(profileId);
@@ -52,23 +55,112 @@ export function ProfileDetailScreen() {
     setShowCatModal(false);
   };
 
+  const handleAddFromCatalog = (selectedEvents: Array<{ categoryId: string; categoryName: string; event: EventDefinition }>) => {
+    // Agrupar eventos por categoria
+    const categoriesMap = new Map<string, { id: string; name: string; events: Array<EventDefinition> }>();
+    
+    selectedEvents.forEach(({ categoryId, categoryName, event }) => {
+      if (!categoriesMap.has(categoryId)) {
+        categoriesMap.set(categoryId, { id: categoryId, name: categoryName, events: [] });
+      }
+      categoriesMap.get(categoryId)!.events.push(event);
+    });
+
+    // Criar categorias e eventos
+    categoriesMap.forEach(({ id: catalogCategoryId, name: categoryName, events }) => {
+      // Verificar se categoria já existe (usando o ID do catálogo)
+      let category = categories.find(c => c.id === catalogCategoryId);
+      
+      if (!category) {
+        // Criar nova categoria usando o ID do catálogo
+        createCategory({
+          id: catalogCategoryId,  // Usar ID do catálogo em vez de gerar UUID
+          profile_id: profileId,
+          name: categoryName,
+          order_index: categories.length,
+        });
+        category = { id: catalogCategoryId, profile_id: profileId, name: categoryName, order_index: categories.length };
+      }
+
+      // Criar eventos
+      events.forEach(event => {
+        createEvent({
+          id: generateId(),
+          category_id: catalogCategoryId,  // Usar ID do catálogo
+          name: event.name,
+          icon: event.sentiment === '+' ? 'check-circle' : event.sentiment === '-' ? 'close-circle' : 'circle',
+          event_type: 'count',
+          is_positive: event.sentiment === '+' ? 1 : 0,
+        });
+      });
+    });
+
+    // Recarregar dados
+    setTimeout(() => {
+      loadCategories(profileId);
+      loadEventsByProfile(profileId);
+    }, 100);
+  };
+
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Header
         title={profile?.name ?? 'Perfil'}
         showBack
-        right={
-          <Button title="+ Categoria" size="sm" onPress={() => setShowCatModal(true)} />
-        }
       />
       <ScrollView className="flex-1 p-4" showsVerticalScrollIndicator={false}>
-        {categories.length === 0 ? (
-          <View className="items-center py-12">
-            <Icon name="folder-plus-outline" size={48} color="#6b7280" />
-            <Text className="text-gray-500 dark:text-gray-400 mt-3 text-center">
-              Nenhuma categoria.{'\n'}Adicione categorias como "Ataque", "Defesa", etc.
+        {/* Action Buttons */}
+        <View className="flex-row gap-3 mb-4">
+          <TouchableOpacity
+            onPress={() => setShowCatalog(true)}
+            className="flex-1 bg-blue-500 rounded-xl p-4 flex-row items-center justify-center gap-2"
+          >
+            <Icon name="database-plus" size={20} color="#fff" />
+            <Text className="text-white font-semibold text-base">
+              Adicionar do Catálogo
             </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            onPress={() => setShowCatModal(true)}
+            className="bg-amber-500 rounded-xl p-4 flex-row items-center justify-center gap-2"
+            style={{ minWidth: 100 }}
+          >
+            <Icon name="folder-plus" size={20} color="#fff" />
+            <Text className="text-white font-semibold text-base">
+              Nova Categoria
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Info Card */}
+        <Card className="mb-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+          <View className="flex-row items-start gap-3">
+            <Icon name="information" size={24} color="#3b82f6" />
+            <View className="flex-1">
+              <Text className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">
+                Como funciona?
+              </Text>
+              <Text className="text-xs text-blue-700 dark:text-blue-300">
+                Use o catálogo para adicionar eventos pré-definidos do sistema, ou crie suas próprias categorias e eventos personalizados.
+              </Text>
+            </View>
           </View>
+        </Card>
+
+        {/* Categories List */}
+        {categories.length === 0 ? (
+          <Card>
+            <View className="items-center py-12">
+              <Icon name="folder-plus-outline" size={48} color="#6b7280" />
+              <Text className="text-gray-500 dark:text-gray-400 mt-3 text-center font-semibold text-base">
+                Nenhuma categoria ainda
+              </Text>
+              <Text className="text-gray-400 dark:text-gray-500 mt-1 text-center text-sm">
+                Adicione eventos do catálogo ou crie suas próprias categorias
+              </Text>
+            </View>
+          </Card>
         ) : (
           categories.map((cat) => {
             const catEvents = events.filter((e) => e.category_id === cat.id);
@@ -157,6 +249,13 @@ export function ProfileDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Event Catalog Modal */}
+      <EventCatalogModal
+        visible={showCatalog}
+        onClose={() => setShowCatalog(false)}
+        onSave={handleAddFromCatalog}
+      />
     </View>
   );
 }

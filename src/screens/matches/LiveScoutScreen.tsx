@@ -25,6 +25,7 @@ import type { ScoutCategory, ScoutEvent, MatchEvent, PlayerPosition } from '@/ty
 import * as matchRepo from '@/database/repositories/matchRepository';
 import * as profileRepo from '@/database/repositories/profileRepository';
 import * as benchRepo from '@/database/repositories/benchRepository';
+import { EVENT_CATEGORIES } from '@/constants/eventCategories';
 
 type Route = RouteProp<RootStackParamList, 'LiveScout'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -183,6 +184,25 @@ export function LiveScoutScreen() {
     [matchPlayers, positionedPlayers]
   );
 
+  // Filtrar eventos baseado na posição do jogador selecionado
+  // Se for goleiro (posição 1), mostrar apenas eventos da categoria GOLEIRO
+  const filteredEvents = useMemo(() => {
+    if (!live.selectedPlayerId) return events;
+    
+    // Encontrar a posição do jogador selecionado
+    const selectedPlayerPosition = positionedPlayers.find(
+      p => p.player.player_id === live.selectedPlayerId
+    )?.position;
+    
+    // Se for posição 1 (goleiro), filtrar apenas eventos da categoria GOLEIRO
+    if (selectedPlayerPosition === 1) {
+      return events.filter(event => event.category_id === 'goleiro');
+    }
+    
+    // Para outras posições, mostrar todos os eventos
+    return events;
+  }, [events, live.selectedPlayerId, positionedPlayers]);
+
   // Independent interval to keep bench timers ticking
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
@@ -220,6 +240,14 @@ export function LiveScoutScreen() {
       modalOpacityAnim.setValue(0);
     }
   }, [showEventsModal]);
+
+  // Auto-close events modal if period becomes 0
+  useEffect(() => {
+    if (showEventsModal && period === 0) {
+      setShowEventsModal(false);
+      setShowSwapPanel(false);
+    }
+  }, [period, showEventsModal]);
 
   const handlePositionPress = (position: number, screenX: number, screenY: number) => {
     // Check if position already has a player - if yes, allow changing
@@ -301,6 +329,16 @@ export function LiveScoutScreen() {
   };
 
   const handlePlayerPress = (player:typeof matchPlayers[0]) => {
+    // Bloquear registro de eventos antes de iniciar a partida
+    if (period === 0) {
+      Alert.alert(
+        'Partida Não Iniciada',
+        'Inicie o cronômetro para começar a registrar eventos.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setSelectedPlayer(player.player_id, player.team_id);
     setShowSwapPanel(false);
     setShowEventsModal(true);
@@ -392,6 +430,16 @@ export function LiveScoutScreen() {
       return;
     }
 
+    // Validação: não permitir eventos antes de iniciar
+    if (period === 0) {
+      Alert.alert(
+        'Partida Não Iniciada',
+        'Inicie o cronômetro para começar a registrar eventos.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     const minute = Math.floor(elapsed / 60);
     const second = elapsed % 60;
 
@@ -453,6 +501,11 @@ export function LiveScoutScreen() {
           <Text className="text-gray-400 text-xs mt-0.5">
             Jogadores: {positionedPlayers.length}/5
           </Text>
+          {period === 0 && (
+            <Text className="text-amber-400 text-xs font-semibold mt-0.5">
+              ⚠️ Posicione os jogadores antes de iniciar
+            </Text>
+          )}
           {selectedPlayerFromBench && (
             <Text className="text-primary-400 text-xs">
               #{selectedPlayerFromBench.player_number} - Toque em uma posição na quadra
@@ -463,26 +516,64 @@ export function LiveScoutScreen() {
         {/* Timer */}
         <View className="flex-1 items-center justify-center flex-row gap-2">
           <TouchableOpacity
-            onPress={period === 0 ? undefined : toggleTimer}
-            disabled={period === 0}
+            onPress={() => {
+              if (period === 0) {
+                // Tentar iniciar a partida
+                if (positionedPlayers.length === 0) {
+                  Alert.alert(
+                    'Posicione os Jogadores',
+                    'É necessário posicionar pelo menos um jogador na quadra antes de iniciar a partida.',
+                    [{ text: 'OK' }]
+                  );
+                  return;
+                }
+                // Iniciar primeiro tempo
+                toggleTimer();
+              } else {
+                // Pausar/retomar durante a partida
+                toggleTimer();
+              }
+            }}
             style={{
               flexDirection: 'row', alignItems: 'center', gap: 8,
-              backgroundColor: period === 0 ? '#1f2937' : isRunning ? '#92400e' : '#14532d',
+              backgroundColor: period === 0 ? '#14532d' : isRunning ? '#92400e' : '#14532d',
               borderWidth: 2,
-              borderColor: period === 0 ? '#374151' : isRunning ? '#f59e0b' : '#22c55e',
+              borderColor: period === 0 ? '#22c55e' : isRunning ? '#f59e0b' : '#22c55e',
               borderRadius: 14, paddingHorizontal: 18,
               height: 48,
             }}
           >
             <Icon
-              name={period === 0 ? 'flag-checkered' : isRunning ? 'pause-circle' : 'play-circle'}
+              name={period === 0 ? 'play-circle' : isRunning ? 'pause-circle' : 'play-circle'}
               size={22}
-              color={period === 0 ? '#6b7280' : isRunning ? '#f59e0b' : '#22c55e'}
+              color={period === 0 ? '#22c55e' : isRunning ? '#f59e0b' : '#22c55e'}
             />
-            <Text style={{ color: period === 0 ? '#6b7280' : '#ffffff', fontFamily: 'monospace', fontSize: 18, fontWeight: '800', letterSpacing: 1 }}>
+            <Text style={{ color: '#ffffff', fontFamily: 'monospace', fontSize: 18, fontWeight: '800', letterSpacing: 1 }}>
               {formatTime(elapsed)}
             </Text>
           </TouchableOpacity>
+
+          {/* Paused indicator */}
+          {!isRunning && period > 0 && (
+            <View style={{
+              backgroundColor: 'rgba(251,191,36,0.15)',
+              borderRadius: 8,
+              paddingHorizontal: 10,
+              paddingVertical: 6,
+              borderWidth: 1,
+              borderColor: '#fbbf24',
+              height: 48,
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
+              gap: 4,
+            }}>
+              <Icon name="pause" size={14} color="#fbbf24" />
+              <Text style={{ color: '#fbbf24', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
+                PAUSADO
+              </Text>
+            </View>
+          )}
 
           {/* Period badge */}
           <View style={{
@@ -558,7 +649,7 @@ export function LiveScoutScreen() {
       </View>
 
       {/* ─── Player Info Strip (visible when event panels are open) ─────────── */}
-      {showEventsModal && live.selectedPlayerId && (() => {
+      {showEventsModal && live.selectedPlayerId && period > 0 && (() => {
         const sel = positionedPlayers.find(p => p.player.player_id === live.selectedPlayerId)?.player;
         if (!sel) return null;
         return (
@@ -626,14 +717,20 @@ export function LiveScoutScreen() {
         )}
 
         {/* Left: Negative Events Panel */}
-        {showEventsModal && live.selectedPlayerId && (
+        {showEventsModal && live.selectedPlayerId && period > 0 && (
           <View style={{ width: 100, backgroundColor: '#06090f', borderRightWidth: 1, borderRightColor: '#1f2937' }}>
-            <View style={{ paddingVertical: 7, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: 'rgba(239,68,68,0.08)' }}>
-              <Text style={{ color: '#ef4444', fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>ERROS</Text>
+            <View style={{ paddingVertical: 7, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(239,68,68,0.08)' : 'rgba(251,191,36,0.15)' }}>
+              <Text style={{ color: isRunning ? '#ef4444' : '#fbbf24', fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>ERROS</Text>
+              {!isRunning && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
+                  <Icon name="pause" size={8} color="#fbbf24" />
+                  <Text style={{ color: '#fbbf24', fontSize: 7, fontWeight: '700' }}>PAUSADO</Text>
+                </View>
+              )}
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
               {categories.map((category) => {
-                const catEvents = events.filter(e => e.category_id === category.id && !e.is_positive);
+                const catEvents = filteredEvents.filter(e => e.category_id === category.id && !e.is_positive);
                 if (catEvents.length === 0) return null;
                 return (
                   <View key={category.id}>
@@ -676,14 +773,20 @@ export function LiveScoutScreen() {
         </View>
 
         {/* Right: Positive Events Panel */}
-        {showEventsModal && live.selectedPlayerId && (
+        {showEventsModal && live.selectedPlayerId && period > 0 && (
           <View style={{ width: 100, backgroundColor: '#06090f', borderLeftWidth: 1, borderLeftColor: '#1f2937' }}>
-            <View style={{ paddingVertical: 7, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: 'rgba(34,197,94,0.08)' }}>
-              <Text style={{ color: '#22c55e', fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>ACERTOS</Text>
+            <View style={{ paddingVertical: 7, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(34,197,94,0.08)' : 'rgba(251,191,36,0.15)' }}>
+              <Text style={{ color: isRunning ? '#22c55e' : '#fbbf24', fontSize: 10, fontWeight: '800', letterSpacing: 1 }}>ACERTOS</Text>
+              {!isRunning && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 2 }}>
+                  <Icon name="pause" size={8} color="#fbbf24" />
+                  <Text style={{ color: '#fbbf24', fontSize: 7, fontWeight: '700' }}>PAUSADO</Text>
+                </View>
+              )}
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
               {categories.map((category) => {
-                const catEvents = events.filter(e => e.category_id === category.id && e.is_positive);
+                const catEvents = filteredEvents.filter(e => e.category_id === category.id && e.is_positive);
                 if (catEvents.length === 0) return null;
                 return (
                   <View key={category.id}>
@@ -749,13 +852,20 @@ export function LiveScoutScreen() {
       </View>
 
       {/* ─── Bottom Action Bar ─────────────────────────────────────────────────── */}
-      {showEventsModal && live.selectedPlayerId && !showSwapPanel && (() => {
+      {showEventsModal && live.selectedPlayerId && !showSwapPanel && period > 0 && (() => {
         const selId = live.selectedPlayerId;
         const selPlayer = positionedPlayers.find(p => p.player.player_id === selId)?.player;
         const benchPeriods = match && selPlayer ? benchRepo.getPlayerBenchPeriods(match.id, selPlayer.player_id) : [];
         const fmt = (s: number) => `${Math.floor(s / 60)}′${(s % 60).toString().padStart(2, '0')}`;
         return (
         <View style={{ backgroundColor: '#0b1120', borderTopWidth: 1, borderTopColor: '#1f2937' }}>
+          {/* Indicador de tempo pausado */}
+          {!isRunning && (
+            <View style={{ backgroundColor: 'rgba(251,191,36,0.15)', borderBottomWidth: 1, borderBottomColor: '#fbbf24', paddingVertical: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <Icon name="pause-circle" size={16} color="#fbbf24" />
+              <Text style={{ color: '#fbbf24', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>CRONÔMETRO PAUSADO</Text>
+            </View>
+          )}
           {/* Player events list with delete */}
           {(() => {
             const playerEvts = live.events.filter(e => e.player_id === selId).slice().reverse();
@@ -850,13 +960,20 @@ export function LiveScoutScreen() {
       })()}
 
       {/* ─── Swap Panel Overlay ───────────────────────────────────────────────── */}
-      {showEventsModal && showSwapPanel && live.selectedPlayerId && (() => {
+      {showEventsModal && showSwapPanel && live.selectedPlayerId && period > 0 && (() => {
         const benchPlayers = matchPlayers.filter(
           mp => !positionedPlayers.some(pp => pp.player.player_id === mp.player_id)
             && mp.player_id !== live.selectedPlayerId
         );
         return (
-          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15,23,42,0.97)', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: insets.bottom + 16, zIndex: 50, borderTopWidth: 1, borderTopColor: '#374151' }}>
+          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15,23,42,0.97)', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: insets.bottom + 16, zIndex: 50, borderTopWidth: 1, borderTopColor: !isRunning ? '#fbbf24' : '#374151' }}>
+            {/* Indicador de tempo pausado */}
+            {!isRunning && (
+              <View style={{ backgroundColor: 'rgba(251,191,36,0.15)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 8 }}>
+                <Icon name="pause-circle" size={14} color="#fbbf24" />
+                <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>TEMPO PAUSADO</Text>
+              </View>
+            )}
             <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, textAlign: 'center' }}>
               Escolha quem entra
             </Text>
