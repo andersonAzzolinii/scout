@@ -7,20 +7,95 @@ import {
   Pressable,
   TextInput,
   StyleSheet,
-  Alert,
+  Switch,
   useColorScheme,
 } from 'react-native';
-import { CustomWidget, WidgetType, ComparisonMode } from '@/types/dashboard.types';
-import { 
-  getAvailablePlayers, 
-  getAvailableTeams 
+import { CustomWidget, WidgetType, ComparisonMode, AggregationMode } from '@/types/dashboard.types';
+import {
+  getAvailablePlayers,
+  getAvailableTeams,
+  getAvailableCategories,
+  getAvailableEvents,
+  getAvailableMatches,
 } from '@/database/repositories/statsRepository';
-import { 
-  EVENT_CATEGORIES, 
-  getSentimentColor,
-  type EventCategory 
-} from '@/constants/eventCategories';
 
+// Dropdown
+interface DropOption { value: string; label: string; }
+interface DropdownProps {
+  value: string;
+  options: DropOption[];
+  onChange: (v: string) => void;
+  placeholder?: string;
+  colors: Record<string, string>;
+}
+function DropdownField({ value, options, onChange, placeholder = 'Todos', colors }: DropdownProps) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find(o => o.value === value);
+  return (
+    <View>
+      <Pressable
+        onPress={() => setOpen(v => !v)}
+        style={[dd.trigger, { backgroundColor: colors.input, borderColor: open ? colors.primary : colors.border }]}
+      >
+        <Text style={{ flex: 1, color: selected ? colors.text : colors.placeholder }} numberOfLines={1}>
+          {selected?.label || placeholder}
+        </Text>
+        <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{open ? '\u25b2' : '\u25bc'}</Text>
+      </Pressable>
+      {open && (
+        <View style={[dd.list, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <ScrollView nestedScrollEnabled bounces={false} style={{ maxHeight: 180 }}>
+            <Pressable
+              onPress={() => { onChange(''); setOpen(false); }}
+              style={[dd.option, !value && { backgroundColor: colors.primaryBg }]}
+            >
+              <Text style={{ color: !value ? colors.primary : colors.textSecondary }}>{placeholder}</Text>
+              {!value && <Text style={{ color: colors.primary, fontSize: 12 }}>{'\u2713'}</Text>}
+            </Pressable>
+            {options.map(opt => (
+              <Pressable
+                key={opt.value}
+                onPress={() => { onChange(opt.value); setOpen(false); }}
+                style={[dd.option, value === opt.value && { backgroundColor: colors.primaryBg }]}
+              >
+                <Text style={{ flex: 1, color: value === opt.value ? colors.primary : colors.text }} numberOfLines={1}>
+                  {opt.label}
+                </Text>
+                {value === opt.value && <Text style={{ color: colors.primary, fontSize: 12 }}>{'\u2713'}</Text>}
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
+}
+const dd = StyleSheet.create({
+  trigger: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 11, borderRadius: 8, borderWidth: 1 },
+  list: { borderRadius: 8, borderWidth: 1, marginTop: 4, overflow: 'hidden', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 6 },
+  option: { paddingHorizontal: 12, paddingVertical: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+});
+
+// Config
+const CHART_TYPES: Array<{ value: WidgetType; label: string; icon: string }> = [
+  { value: 'bar', label: 'Barras', icon: '\ud83d\udcca' },
+  { value: 'pie', label: 'Pizza / Donut', icon: '\ud83e\udd67' },
+  { value: 'kpi', label: 'Totalizador', icon: '#' },
+];
+const GROUP_BY_OPTIONS: DropOption[] = [
+  { value: 'players', label: 'Jogador' },
+  { value: 'matches', label: 'Partida' },
+  { value: 'categories', label: 'Categoria' },
+  { value: 'events', label: 'Evento' },
+  { value: 'teams', label: 'Time' },
+];
+const AGGREGATION_OPTIONS: DropOption[] = [
+  { value: 'count', label: 'Contagem' },
+  { value: 'pct', label: 'Percentual (%)' },
+  { value: 'avg', label: 'Media / Partida' },
+];
+
+// Modal
 interface Props {
   visible: boolean;
   onClose: () => void;
@@ -28,436 +103,264 @@ interface Props {
   editingWidget?: CustomWidget;
 }
 
-interface EntityOption {
-  id: string;
-  name: string;
-  label: string;
-}
-
 export function WidgetBuilderModal({ visible, onClose, onSave, editingWidget }: Props) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  
   const colors = {
-    background: isDark ? '#0a0a0a' : '#fafafa',
-    card: isDark ? '#171717' : '#ffffff',
-    text: isDark ? '#f5f5f5' : '#171717',
-    textSecondary: isDark ? '#a3a3a3' : '#737373',
-    border: isDark ? '#404040' : '#e5e5e5',
-    primary: '#3b82f6',
+    background: isDark ? '#000000' : '#f2f2f7',
+    card: isDark ? '#1c1c1e' : '#ffffff',
+    input: isDark ? '#2c2c2e' : '#f0f0f0',
+    text: isDark ? '#ffffff' : '#000000',
+    textSecondary: isDark ? '#8e8e93' : '#6c6c70',
+    placeholder: isDark ? '#48484a' : '#aeaeb2',
+    border: isDark ? '#38383a' : '#d1d1d6',
+    primary: '#30d158',
+    primaryBg: isDark ? '#0a2e14' : '#e8f8ed',
   };
-  
-  // Form state
+
   const [title, setTitle] = useState('');
   const [chartType, setChartType] = useState<WidgetType>('bar');
-  const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('players');
-  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
-  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
-  const [showValues, setShowValues] = useState(true);
-  const [showLegend, setShowLegend] = useState(true);
+  const [groupBy, setGroupBy] = useState<ComparisonMode>('players');
+  const [aggregation, setAggregation] = useState<AggregationMode>('count');
+  const [filterTeamId, setFilterTeamId] = useState('');
+  const [filterPlayerId, setFilterPlayerId] = useState('');
+  const [filterMatchId, setFilterMatchId] = useState('');
+  const [filterCategoryId, setFilterCategoryId] = useState('');
+  const [filterEventId, setFilterEventId] = useState('');
+  const [onlyPositive, setOnlyPositive] = useState(false);
+  const [onlyNegative, setOnlyNegative] = useState(false);
 
-  // Available options
-  const [entities, setEntities] = useState<EntityOption[]>([]);
-  
-  // Category expansion state
-  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+  const [teams, setTeams] = useState<DropOption[]>([]);
+  const [players, setPlayers] = useState<DropOption[]>([]);
+  const [matches, setMatches] = useState<DropOption[]>([]);
+  const [categories, setCategories] = useState<DropOption[]>([]);
+  const [events, setEvents] = useState<DropOption[]>([]);
 
-  // Load initial data
   useEffect(() => {
-    if (visible) {
-      loadEntities(comparisonMode);
-      
-      if (editingWidget) {
-        setTitle(editingWidget.title);
-        setChartType(editingWidget.type);
-        setComparisonMode(editingWidget.comparisonMode);
-        setSelectedEventIds(editingWidget.selectedEventIds);
-        setSelectedEntityIds(editingWidget.comparedEntityIds);
-        setShowValues(editingWidget.showValues);
-        setShowLegend(editingWidget.showLegend);
-      } else {
-        resetForm();
-      }
-    }
-  }, [visible, editingWidget, comparisonMode]);
-
-  const loadEntities = (mode: ComparisonMode) => {
-    if (mode === 'players') {
-      const players = getAvailablePlayers();
-      setEntities(players.map(p => ({ 
-        id: p.id, 
-        name: p.name,
-        label: `#${p.number} ${p.name}` 
-      })));
-    } else if (mode === 'teams') {
-      const teams = getAvailableTeams();
-      setEntities(teams.map(t => ({ 
-        id: t.id, 
-        name: t.name,
-        label: t.name 
-      })));
+    if (!visible) return;
+    const ts = getAvailableTeams();
+    setTeams(ts.map((t: any) => ({ value: t.id, label: t.name })));
+    const ps = getAvailablePlayers();
+    setPlayers(ps.map((p: any) => ({ value: p.id, label: p.name })));
+    const ms = getAvailableMatches();
+    setMatches(ms.map((m: any) => ({ value: m.id, label: m.label })));
+    const cs = getAvailableCategories();
+    setCategories(cs.map((c: any) => ({ value: c.id, label: c.name })));
+    if (editingWidget) {
+      setTitle(editingWidget.title);
+      setChartType(editingWidget.type);
+      setGroupBy((editingWidget.groupBy || editingWidget.comparisonMode || 'players') as ComparisonMode);
+      setAggregation((editingWidget.aggregation || 'count') as AggregationMode);
+      setFilterTeamId(editingWidget.filterTeamId || '');
+      setFilterPlayerId(editingWidget.filterPlayerId || '');
+      setFilterMatchId(editingWidget.filterMatchId || '');
+      const cat = editingWidget.filterCategoryId || '';
+      setFilterCategoryId(cat);
+      const ev = editingWidget.filterEventId || editingWidget.kpiEventId || '';
+      setFilterEventId(ev);
+      setOnlyPositive(editingWidget.onlyPositive || false);
+      setOnlyNegative(editingWidget.onlyNegative || false);
+      loadEvents(cat);
     } else {
-      setEntities([]);
+      resetForm();
+      loadEvents('');
     }
-  };
+  }, [visible, editingWidget]);
 
-  const toggleCategory = (categoryId: string) => {
-    setExpandedCategories(prev =>
-      prev.includes(categoryId)
-        ? prev.filter(id => id !== categoryId)
-        : [...prev, categoryId]
-    );
-  };
-
-  const selectAllInCategory = (category: EventCategory) => {
-    const categoryEventIds = category.events.map(e => e.id);
-    const allSelected = categoryEventIds.every(id => selectedEventIds.includes(id));
-    
-    if (allSelected) {
-      // Deselect all from this category
-      setSelectedEventIds(prev => prev.filter(id => !categoryEventIds.includes(id)));
-    } else {
-      // Select all from this category
-      const newIds = [...selectedEventIds];
-      categoryEventIds.forEach(id => {
-        if (!newIds.includes(id)) {
-          newIds.push(id);
-        }
-      });
-      setSelectedEventIds(newIds);
-    }
+  const loadEvents = (categoryId: string) => {
+    const evs = getAvailableEvents(categoryId || undefined);
+    setEvents(evs.map((e: any) => ({ value: e.id, label: e.name })));
   };
 
   const resetForm = () => {
     setTitle('');
     setChartType('bar');
-    setComparisonMode('players');
-    setSelectedEventIds([]);
-    setSelectedEntityIds([]);
-    setShowValues(true);
-    setShowLegend(true);
-    setExpandedCategories([]);
+    setGroupBy('players');
+    setAggregation('count');
+    setFilterTeamId('');
+    setFilterPlayerId('');
+    setFilterMatchId('');
+    setFilterCategoryId('');
+    setFilterEventId('');
+    setOnlyPositive(false);
+    setOnlyNegative(false);
   };
 
-  const toggleEvent = (eventId: string) => {
-    setSelectedEventIds(prev =>
-      prev.includes(eventId) 
-        ? prev.filter(id => id !== eventId)
-        : [...prev, eventId]
-    );
-  };
-
-  const toggleEntity = (entityId: string) => {
-    setSelectedEntityIds(prev =>
-      prev.includes(entityId)
-        ? prev.filter(id => id !== entityId)
-        : [...prev, entityId]
-    );
+  const handleCategoryChange = (catId: string) => {
+    setFilterCategoryId(catId);
+    setFilterEventId('');
+    loadEvents(catId);
   };
 
   const handleSave = () => {
-    if (!title.trim()) {
-      Alert.alert('Erro', 'Digite um título para o gráfico');
-      return;
-    }
-
-    if (selectedEventIds.length === 0) {
-      Alert.alert('Erro', 'Selecione pelo menos um evento');
-      return;
-    }
-
-    if (comparisonMode !== 'events' && selectedEntityIds.length === 0) {
-      Alert.alert('Erro', `Selecione pelo menos um(a) ${comparisonMode === 'players' ? 'jogador' : 'time'}`);
-      return;
-    }
-
+    if (!title.trim()) return;
+    if (chartType === 'kpi' && !filterEventId) return;
     const widget: CustomWidget = {
       id: editingWidget?.id || Date.now().toString(),
       title: title.trim(),
       type: chartType,
-      selectedEventIds,
-      comparisonMode,
-      comparedEntityIds: comparisonMode === 'events' ? [] : selectedEntityIds,
-      showValues,
-      showLegend,
+      groupBy: chartType === 'kpi' ? 'players' : groupBy,
+      aggregation,
+      filterTeamId: filterTeamId || undefined,
+      filterPlayerId: filterPlayerId || undefined,
+      filterMatchId: filterMatchId || undefined,
+      filterCategoryId: filterCategoryId || undefined,
+      filterEventId: filterEventId || undefined,
+      onlyPositive,
+      onlyNegative,
+      comparisonMode: chartType === 'kpi' ? 'players' : groupBy,
+      selectedEventIds: filterEventId ? [filterEventId] : [],
+      comparedEntityIds: filterPlayerId ? [filterPlayerId] : filterTeamId ? [filterTeamId] : [],
+      showValues: true,
+      showLegend: true,
+      kpiEventId: chartType === 'kpi' ? filterEventId : undefined,
+      kpiCalcMode: chartType === 'kpi' ? (aggregation as any) : undefined,
+      height: editingWidget?.height || 'medium',
+      order: editingWidget?.order,
       createdAt: editingWidget?.createdAt || new Date().toISOString(),
     };
-
     onSave(widget);
     onClose();
   };
 
+  const canSave = title.trim().length > 0 && (chartType !== 'kpi' || !!filterEventId);
+
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        {/* Header */}
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>
-            {editingWidget ? 'Editar Gráfico' : 'Novo Gráfico'}
+      <View style={[s.container, { backgroundColor: colors.background }]}>
+        <View style={[s.header, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
+          <Text style={[s.headerTitle, { color: colors.text }]}>
+            {editingWidget ? 'Editar Grafico' : 'Novo Grafico'}
           </Text>
-          <Pressable onPress={onClose} style={styles.closeButton}>
-            <Text style={[styles.closeText, { color: colors.textSecondary }]}>✕</Text>
+          <Pressable onPress={onClose} style={s.closeBtn}>
+            <Text style={{ fontSize: 22, color: colors.textSecondary }}>{'\u2715'}</Text>
           </Pressable>
         </View>
-
-        <ScrollView style={styles.content}>
-          {/* Title Input */}
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.text }]}>Título do Gráfico</Text>
+        <ScrollView style={s.scroll} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+          <View style={s.section}>
+            <Text style={[s.sectionLabel, { color: colors.text }]}>Titulo</Text>
             <TextInput
               value={title}
               onChangeText={setTitle}
-              placeholder="Ex: Gols vs Assistências - Top 5"
-              placeholderTextColor={colors.textSecondary}
-              style={[styles.input, { 
-                backgroundColor: colors.card, 
-                color: colors.text,
-                borderColor: colors.border 
-              }]}
+              placeholder="Ex: Gols por Jogador"
+              placeholderTextColor={colors.placeholder}
+              style={[s.input, { backgroundColor: colors.input, color: colors.text, borderColor: colors.border }]}
             />
           </View>
 
-          {/* Chart Type */}
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.text }]}>Tipo de Gráfico</Text>
-            <View style={styles.buttonGroup}>
-              {(['bar', 'line', 'pie'] as WidgetType[]).map((type) => (
-                <Pressable
-                  key={type}
-                  onPress={() => setChartType(type)}
-                  style={[
-                    styles.button,
-                    { borderColor: colors.border },
-                    chartType === type && { 
-                      backgroundColor: colors.primary,
-                      borderColor: colors.primary 
-                    },
-                  ]}
-                >
-                  <Text style={[
-                    styles.buttonText,
-                    { color: chartType === type ? '#fff' : colors.text }
-                  ]}>
-                    {type === 'bar' ? '📊 Barras' : type === 'line' ? '📈 Linhas' : '🥧 Pizza'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* Comparison Mode */}
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.text }]}>Comparar</Text>
-            <View style={styles.buttonGroup}>
-              {(['players', 'teams', 'events'] as ComparisonMode[]).map((mode) => (
-                <Pressable
-                  key={mode}
-                  onPress={() => {
-                    setComparisonMode(mode);
-                    setSelectedEntityIds([]);
-                    loadEntities(mode);
-                  }}
-                  style={[
-                    styles.button,
-                    { borderColor: colors.border },
-                    comparisonMode === mode && { 
-                      backgroundColor: colors.primary,
-                      borderColor: colors.primary 
-                    },
-                  ]}
-                >
-                  <Text style={[
-                    styles.buttonText,
-                    { color: comparisonMode === mode ? '#fff' : colors.text }
-                  ]}>
-                    {mode === 'players' ? '👤 Jogadores' : 
-                     mode === 'teams' ? '👥 Times' : '📊 Eventos'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* Event Selection */}
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.text }]}>
-              Selecione os Eventos ({selectedEventIds.length})
-            </Text>
-            
-            {EVENT_CATEGORIES.map((category) => {
-              const isExpanded = expandedCategories.includes(category.id);
-              const eventsInCategory = category.events.length;
-              const selectedInCategory = category.events.filter(e => 
-                selectedEventIds.includes(e.id)
-              ).length;
-              const allSelected = selectedInCategory === eventsInCategory;
-              
-              return (
-                <View key={category.id} style={styles.categoryContainer}>
-                  {/* Category Header */}
+          <View style={s.section}>
+            <Text style={[s.sectionLabel, { color: colors.text }]}>Tipo de Visualizacao</Text>
+            <View style={s.typeRow}>
+              {CHART_TYPES.map(ct => {
+                const active = chartType === ct.value;
+                return (
                   <Pressable
-                    onPress={() => toggleCategory(category.id)}
-                    style={[styles.categoryHeader, { 
-                      backgroundColor: colors.card,
-                      borderColor: colors.border 
-                    }]}
-                  >
-                    <View style={styles.categoryHeaderLeft}>
-                      <Text style={styles.categoryIcon}>{category.icon}</Text>
-                      <Text style={[styles.categoryName, { color: colors.text }]}>
-                        {category.name}
-                      </Text>
-                      <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>
-                        ({selectedInCategory}/{eventsInCategory})
-                      </Text>
-                    </View>
-                    
-                    <View style={styles.categoryHeaderRight}>
-                      <Pressable
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          selectAllInCategory(category);
-                        }}
-                        style={[styles.selectAllBtn, { 
-                          backgroundColor: allSelected ? colors.primary : 'transparent',
-                          borderColor: colors.border 
-                        }]}
-                      >
-                        <Text style={[styles.selectAllText, { 
-                          color: allSelected ? '#fff' : colors.textSecondary 
-                        }]}>
-                          {allSelected ? '✓ Todos' : 'Todos'}
-                        </Text>
-                      </Pressable>
-                      
-                      <Text style={[styles.chevron, { color: colors.textSecondary }]}>
-                        {isExpanded ? '▼' : '▶'}
-                      </Text>
-                    </View>
-                  </Pressable>
-                  
-                  {/* Category Events */}
-                  {isExpanded && (
-                    <View style={styles.eventList}>
-                      {category.events.map((event) => {
-                        const isSelected = selectedEventIds.includes(event.id);
-                        const sentimentColor = getSentimentColor(event.sentiment);
-                        
-                        return (
-                          <Pressable
-                            key={event.id}
-                            onPress={() => toggleEvent(event.id)}
-                            style={[
-                              styles.eventItem,
-                              { 
-                                backgroundColor: colors.card,
-                                borderColor: isSelected ? sentimentColor : colors.border 
-                              },
-                              isSelected && { 
-                                borderWidth: 2,
-                                backgroundColor: `${sentimentColor}15` 
-                              }
-                            ]}
-                          >
-                            <View style={styles.eventItemLeft}>
-                              <View style={[
-                                styles.sentimentBadge,
-                                { backgroundColor: sentimentColor }
-                              ]}>
-                                <Text style={styles.sentimentText}>{event.sentiment}</Text>
-                              </View>
-                              <Text style={[styles.eventName, { color: colors.text }]}>
-                                {event.name}
-                              </Text>
-                            </View>
-                            
-                            {isSelected && (
-                              <Text style={styles.checkIcon}>✓</Text>
-                            )}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </View>
-
-          {/* Entity Selection (if not comparing events) */}
-          {comparisonMode !== 'events' && (
-            <View style={styles.section}>
-              <Text style={[styles.label, { color: colors.text }]}>
-                Selecione {comparisonMode === 'players' ? 'Jogadores' : 'Times'} ({selectedEntityIds.length}/{entities.length})
-              </Text>
-              <View style={styles.chipContainer}>
-                {entities.map((entity) => (
-                  <Pressable
-                    key={entity.id}
-                    onPress={() => toggleEntity(entity.id)}
+                    key={ct.value}
+                    onPress={() => setChartType(ct.value)}
                     style={[
-                      styles.chip,
-                      { borderColor: colors.border, backgroundColor: colors.card },
-                      selectedEntityIds.includes(entity.id) && {
-                        backgroundColor: colors.primary,
-                        borderColor: colors.primary,
-                      },
+                      s.typeCard,
+                      { backgroundColor: active ? colors.primaryBg : colors.card, borderColor: active ? colors.primary : colors.border },
                     ]}
                   >
-                    <Text style={[
-                      styles.chipText,
-                      { color: selectedEntityIds.includes(entity.id) ? '#fff' : colors.text }
-                    ]}>
-                      {entity.label}
+                    <Text style={[s.typeIcon, ct.value === 'kpi' && { fontWeight: '900' }]}>
+                      {ct.icon}
+                    </Text>
+                    <Text style={[s.typeLabel, { color: active ? colors.primary : colors.textSecondary }]}>
+                      {ct.label}
                     </Text>
                   </Pressable>
-                ))}
-              </View>
+                );
+              })}
+            </View>
+          </View>
+
+          {chartType !== 'kpi' && (
+            <View style={s.section}>
+              <Text style={[s.sectionLabel, { color: colors.text }]}>Agrupar por (Eixo X)</Text>
+              <DropdownField
+                value={groupBy}
+                options={GROUP_BY_OPTIONS}
+                onChange={v => setGroupBy((v || 'players') as ComparisonMode)}
+                placeholder="Selecione..."
+                colors={colors}
+              />
             </View>
           )}
 
-          {/* Display Options */}
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.text }]}>Opções de Exibição</Text>
-            <Pressable
-              onPress={() => setShowValues(!showValues)}
-              style={styles.checkboxRow}
-            >
-              <View style={[styles.checkbox, showValues && { backgroundColor: colors.primary }]}>
-                {showValues && <Text style={styles.checkmark}>✓</Text>}
+          <View style={s.section}>
+            <Text style={[s.sectionLabel, { color: colors.text }]}>Agregacao (Eixo Y)</Text>
+            <DropdownField
+              value={aggregation}
+              options={AGGREGATION_OPTIONS}
+              onChange={v => setAggregation((v || 'count') as AggregationMode)}
+              placeholder="Contagem"
+              colors={colors}
+            />
+          </View>
+
+          <View style={s.section}>
+            <Text style={[s.sectionLabel, { color: colors.text }]}>Filtros (opcional)</Text>
+            <View style={[s.filterBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={s.filterRow}>
+                <View style={s.filterCol}>
+                  <Text style={[s.filterLabel, { color: colors.textSecondary }]}>Time</Text>
+                  <DropdownField value={filterTeamId} options={teams} onChange={setFilterTeamId} placeholder="Todos" colors={colors} />
+                </View>
+                <View style={s.filterCol}>
+                  <Text style={[s.filterLabel, { color: colors.textSecondary }]}>Jogador</Text>
+                  <DropdownField value={filterPlayerId} options={players} onChange={setFilterPlayerId} placeholder="Todos" colors={colors} />
+                </View>
               </View>
-              <Text style={[styles.checkboxLabel, { color: colors.text }]}>
-                Mostrar valores nos gráficos
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setShowLegend(!showLegend)}
-              style={styles.checkboxRow}
-            >
-              <View style={[styles.checkbox, showLegend && { backgroundColor: colors.primary }]}>
-                {showLegend && <Text style={styles.checkmark}>✓</Text>}
+              <View style={[s.filterRow, { marginTop: 12 }]}>
+                <View style={s.filterCol}>
+                  <Text style={[s.filterLabel, { color: colors.textSecondary }]}>Partida</Text>
+                  <DropdownField value={filterMatchId} options={matches} onChange={setFilterMatchId} placeholder="Todas" colors={colors} />
+                </View>
+                <View style={s.filterCol}>
+                  <Text style={[s.filterLabel, { color: colors.textSecondary }]}>Categoria</Text>
+                  <DropdownField value={filterCategoryId} options={categories} onChange={handleCategoryChange} placeholder="Todas" colors={colors} />
+                </View>
               </View>
-              <Text style={[styles.checkboxLabel, { color: colors.text }]}>
-                Mostrar legenda
-              </Text>
-            </Pressable>
+              <View style={{ marginTop: 12 }}>
+                <Text style={[s.filterLabel, { color: colors.textSecondary }]}>
+                  {chartType === 'kpi' ? 'Evento Especifico *' : 'Evento Especifico'}
+                </Text>
+                <DropdownField value={filterEventId} options={events} onChange={setFilterEventId} placeholder="Todos" colors={colors} />
+              </View>
+              <View style={[s.toggleRow, { borderTopColor: colors.border }]}>
+                <View style={s.toggleItem}>
+                  <Switch
+                    value={onlyPositive}
+                    onValueChange={v => { setOnlyPositive(v); if (v) setOnlyNegative(false); }}
+                    trackColor={{ false: colors.border, true: colors.primary }}
+                    thumbColor="#ffffff"
+                  />
+                  <Text style={[s.toggleLabel, { color: colors.text }]}>So positivas</Text>
+                </View>
+                <View style={s.toggleItem}>
+                  <Switch
+                    value={onlyNegative}
+                    onValueChange={v => { setOnlyNegative(v); if (v) setOnlyPositive(false); }}
+                    trackColor={{ false: colors.border, true: '#ef4444' }}
+                    thumbColor="#ffffff"
+                  />
+                  <Text style={[s.toggleLabel, { color: colors.text }]}>So negativas</Text>
+                </View>
+              </View>
+            </View>
           </View>
         </ScrollView>
 
-        {/* Footer Actions */}
-        <View style={[styles.footer, { borderTopColor: colors.border }]}>
-          <Pressable
-            onPress={onClose}
-            style={[styles.footerButton, { backgroundColor: colors.card }]}
-          >
-            <Text style={[styles.footerButtonText, { color: colors.text }]}>Cancelar</Text>
+        <View style={[s.footer, { backgroundColor: colors.card, borderTopColor: colors.border }]}>
+          <Pressable onPress={onClose} style={[s.footerBtn, { backgroundColor: colors.input }]}>
+            <Text style={[s.footerBtnText, { color: colors.text }]}>Cancelar</Text>
           </Pressable>
           <Pressable
             onPress={handleSave}
-            style={[styles.footerButton, { backgroundColor: colors.primary }]}
+            style={[s.footerBtnPrimary, { backgroundColor: canSave ? colors.primary : colors.border }]}
           >
-            <Text style={[styles.footerButtonText, { color: '#fff' }]}>
-              {editingWidget ? 'Atualizar' : 'Criar Gráfico'}
+            <Text style={[s.footerBtnText, { color: canSave ? '#000000' : colors.textSecondary, fontWeight: '700' }]}>
+              {editingWidget ? 'Atualizar' : 'Salvar'}
             </Text>
           </Pressable>
         </View>
@@ -466,198 +369,29 @@ export function WidgetBuilderModal({ visible, onClose, onSave, editingWidget }: 
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  closeButton: {
-    padding: 8,
-  },
-  closeText: {
-    fontSize: 24,
-  },
-  content: {
-    flex: 1,
-    padding: 16,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-  },
-  buttonGroup: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  button: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  buttonText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  chipContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-  },
-  chipText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  categoryContainer: {
-    marginBottom: 12,
-  },
-  categoryHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  categoryHeaderLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  categoryHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  categoryIcon: {
-    fontSize: 20,
-  },
-  categoryName: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  categoryCount: {
-    fontSize: 13,
-  },
-  selectAllBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  selectAllText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  chevron: {
-    fontSize: 12,
-    marginLeft: 4,
-  },
-  eventList: {
-    marginTop: 8,
-    gap: 6,
-  },
-  eventItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 6,
-    borderWidth: 1,
-    marginLeft: 12,
-  },
-  eventItemLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  sentimentBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sentimentText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  eventName: {
-    fontSize: 14,
-    flex: 1,
-  },
-  checkIcon: {
-    fontSize: 18,
-    color: '#10b981',
-    fontWeight: 'bold',
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: '#ccc',
-    marginRight: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkmark: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  checkboxLabel: {
-    fontSize: 14,
-  },
-  footer: {
-    flexDirection: 'row',
-    padding: 16,
-    gap: 12,
-    borderTopWidth: 1,
-  },
-  footerButton: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  footerButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
+const s = StyleSheet.create({
+  container: { flex: 1 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth },
+  headerTitle: { fontSize: 17, fontWeight: '700' },
+  closeBtn: { padding: 4 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 32 },
+  section: { paddingHorizontal: 20, marginTop: 24 },
+  sectionLabel: { fontSize: 15, fontWeight: '600', marginBottom: 10 },
+  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  typeRow: { flexDirection: 'row', gap: 10 },
+  typeCard: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 18, borderRadius: 12, borderWidth: 1.5, gap: 6 },
+  typeIcon: { fontSize: 28 },
+  typeLabel: { fontSize: 12, fontWeight: '600' },
+  filterBox: { borderRadius: 12, borderWidth: 1, padding: 14 },
+  filterRow: { flexDirection: 'row', gap: 10 },
+  filterCol: { flex: 1 },
+  filterLabel: { fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.3 },
+  toggleRow: { flexDirection: 'row', gap: 20, marginTop: 14, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth },
+  toggleItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  toggleLabel: { fontSize: 13, fontWeight: '500' },
+  footer: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth },
+  footerBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
+  footerBtnPrimary: { flex: 1.5, paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
+  footerBtnText: { fontSize: 15, fontWeight: '600' },
 });

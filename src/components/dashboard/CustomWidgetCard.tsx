@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Dimensions, useColorScheme } from 'react-native';
-import { CustomWidget, WidgetChartData } from '@/types/dashboard.types';
+import { CustomWidget, WidgetChartData, KpiData } from '@/types/dashboard.types';
 import { DashboardBarChart } from './DashboardBarChart';
 import { DashboardLineChart } from './DashboardLineChart';
 import { DashboardPieChart } from './DashboardPieChart';
@@ -8,11 +8,15 @@ import { DashboardPieChart } from './DashboardPieChart';
 interface Props {
   widget: CustomWidget;
   data: WidgetChartData;
+  kpiData?: KpiData | null;
   onEdit: () => void;
   onDelete: () => void;
+  onDrag?: () => void;
+  onResize?: () => void;
+  isDragging?: boolean;
 }
 
-export function CustomWidgetCard({ widget, data, onEdit, onDelete }: Props) {
+export function CustomWidgetCard({ widget, data, kpiData, onEdit, onDelete, onDrag, onResize, isDragging }: Props) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const screenWidth = Dimensions.get('window').width;
@@ -25,7 +29,38 @@ export function CustomWidgetCard({ widget, data, onEdit, onDelete }: Props) {
     destructive: '#ef4444',
   };
 
+  const chartHeight = widget.height === 'small' ? 160 : widget.height === 'large' ? 340 : 220;
+
   const renderChart = () => {
+    if (widget.type === 'kpi') {
+      return (
+        <View style={{ alignItems: 'center', paddingVertical: 28, paddingHorizontal: 16 }}>
+          {kpiData ? (
+            <>
+              <Text style={{ fontSize: 44 }}>{kpiData.eventIcon}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2, marginTop: 14 }}>
+                <Text style={{ fontSize: 60, fontWeight: '900', color: colors.primary, lineHeight: 64 }}>
+                  {kpiData.formatted}
+                </Text>
+                {kpiData.unit ? (
+                  <Text style={{ fontSize: 22, fontWeight: '700', color: colors.primary, marginBottom: 10 }}>
+                    {kpiData.unit}
+                  </Text>
+                ) : null}
+              </View>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginTop: 6 }}>
+                {kpiData.eventName}
+              </Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 3 }}>
+                {kpiData.calcModeLabel}
+              </Text>
+            </>
+          ) : (
+            <Text style={{ color: colors.textSecondary, fontSize: 14 }}>Sem dados</Text>
+          )}
+        </View>
+      );
+    }
     if (widget.type === 'bar') {
       // Convert to ComparisonData format
       const chartData: import('@/types/dashboard.types').ComparisonData = {
@@ -47,21 +82,23 @@ export function CustomWidgetCard({ widget, data, onEdit, onDelete }: Props) {
     }
     
     if (widget.type === 'line') {
-      // Convert to TimeSeriesGroup format
-      const timeSeriesData: import('@/types/dashboard.types').TimeSeriesGroup[] = data.series.map(serie => ({
-        label: serie.eventName,
-        color: serie.color,
-        data: data.labels.map((label, index) => ({
-          date: label,
-          value: serie.values[index],
+      // Each line = entity (player/team), x-axis = events
+      // Transpose: data.labels = entity names, data.series = events
+      const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#f97316'];
+      const timeSeriesData: import('@/types/dashboard.types').TimeSeriesGroup[] = data.labels.map((entityName, entityIndex) => ({
+        label: entityName,
+        color: COLORS[entityIndex % COLORS.length],
+        data: data.series.map((serie) => ({
+          date: serie.eventName,
+          value: serie.values[entityIndex] ?? 0,
         })),
       }));
-      
+
       return (
         <DashboardLineChart
           title=""
           data={timeSeriesData}
-          height={220}
+          height={chartHeight}
           showLegend={widget.showLegend}
         />
       );
@@ -88,13 +125,26 @@ export function CustomWidgetCard({ widget, data, onEdit, onDelete }: Props) {
   };
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.card }]}>
+    <View style={[styles.card, { backgroundColor: colors.card, opacity: isDragging ? 0.85 : 1, transform: [{ scale: isDragging ? 1.02 : 1 }] }]}>
       {/* Header */}
       <View style={styles.header}>
+        {/* Drag handle */}
+        {onDrag && (
+          <Pressable onPressIn={onDrag} style={styles.dragHandle} hitSlop={8}>
+            <Text style={{ fontSize: 20, color: colors.textSecondary, letterSpacing: -2 }}>⠿</Text>
+          </Pressable>
+        )}
         <Text style={[styles.title, { color: colors.text }]}>{widget.title}</Text>
         <View style={styles.actions}>
+          {onResize && (
+            <Pressable onPress={onResize} style={styles.actionButton}>
+              <Text style={{ fontSize: 16, color: colors.textSecondary }}>
+                {widget.height === 'small' ? '⊡' : widget.height === 'large' ? '⊟' : '⊞'}
+              </Text>
+            </Pressable>
+          )}
           <Pressable onPress={onEdit} style={styles.actionButton}>
-            <Text style={[styles.actionText, { color: colors.primary }]}>✏️ Editar</Text>
+            <Text style={[styles.actionText, { color: colors.primary }]}>✏️</Text>
           </Pressable>
           <Pressable onPress={onDelete} style={styles.actionButton}>
             <Text style={[styles.actionText, { color: colors.destructive }]}>🗑️</Text>
@@ -110,9 +160,12 @@ export function CustomWidgetCard({ widget, data, onEdit, onDelete }: Props) {
       {/* Footer Info */}
       <View style={styles.footer}>
         <Text style={[styles.footerText, { color: colors.textSecondary }]}>
-          {widget.selectedEventIds.length} evento(s) • {widget.comparedEntityIds.length} {
-            widget.comparisonMode === 'players' ? 'jogador(es)' : 
-            widget.comparisonMode === 'teams' ? 'time(s)' : 'categoria(s)'
+          {widget.type === 'kpi'
+            ? `KPI • ${widget.kpiCalcMode === 'total' ? 'Total' : widget.kpiCalcMode === 'pct' ? '% do Total' : 'Média/Partida'}`
+            : `${widget.selectedEventIds.length} evento(s) • ${widget.comparedEntityIds.length} ${
+                widget.comparisonMode === 'players' ? 'jogador(es)' : 
+                widget.comparisonMode === 'teams' ? 'time(s)' : 'categoria(s)'
+              }`
           }
         </Text>
       </View>
@@ -136,6 +189,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 16,
+    gap: 8,
+  },
+  dragHandle: {
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   title: {
     fontSize: 18,

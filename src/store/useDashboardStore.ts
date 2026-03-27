@@ -7,7 +7,7 @@ interface DashboardState {
   
   // UI State
   isLoading: boolean;
-  activeTab: 'overview' | 'players' | 'teams' | 'matches' | 'comparison';
+  activeTab: 'overview' | 'players' | 'teams' | 'matches' | 'comparison' | 'analytics';
   selectedView: 'cards' | 'charts' | 'table';
   
   // Actions
@@ -29,7 +29,7 @@ interface DashboardState {
   
   // UI Actions
   setIsLoading: (loading: boolean) => void;
-  setActiveTab: (tab: 'overview' | 'players' | 'teams' | 'matches' | 'comparison') => void;
+  setActiveTab: (tab: 'overview' | 'players' | 'teams' | 'matches' | 'comparison' | 'analytics') => void;
   setSelectedView: (view: 'cards' | 'charts' | 'table') => void;
 }
 

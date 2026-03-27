@@ -187,27 +187,51 @@ export interface MetricCard {
 
 // ─── Dashboard Widget (Customizable Charts) ──────────────────────────────────
 
-export type WidgetType = 'bar' | 'line' | 'pie';
-export type ComparisonMode = 'players' | 'teams' | 'events';
+export type WidgetType = 'bar' | 'line' | 'pie' | 'kpi';
+export type ComparisonMode = 'players' | 'teams' | 'events' | 'matches' | 'categories';
+export type KpiCalcMode = 'total' | 'pct' | 'avg';
+export type AggregationMode = 'count' | 'pct' | 'avg';
 
 export interface CustomWidget {
   id: string;
   title: string;
   type: WidgetType;
-  
-  // Event selection - ONLY these events will be shown
+
+  // V2 fields (new builder)
+  groupBy?: ComparisonMode;
+  aggregation?: AggregationMode;
+  filterTeamId?: string;
+  filterPlayerId?: string;
+  filterMatchId?: string;
+  filterCategoryId?: string;
+  filterEventId?: string;
+  onlyPositive?: boolean;
+  onlyNegative?: boolean;
+
+  // V1 legacy fields (kept for backward compat)
   selectedEventIds: string[];
-  
-  // Entity selection - ONLY these entities will be compared
   comparisonMode: ComparisonMode;
-  comparedEntityIds: string[]; // player IDs, team IDs, or match IDs
-  
-  // Display options
+  comparedEntityIds: string[];
   showValues: boolean;
   showLegend: boolean;
-  
+  kpiEventId?: string;
+  kpiCalcMode?: KpiCalcMode;
+
+  // Layout
+  height?: 'small' | 'medium' | 'large';
+  order?: number;
+
   // Metadata
   createdAt: string;
+}
+
+export interface KpiData {
+  value: number;
+  formatted: string;
+  unit: string;
+  eventName: string;
+  eventIcon: string;
+  calcModeLabel: string;
 }
 
 export interface WidgetChartData {

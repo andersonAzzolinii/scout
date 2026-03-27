@@ -12,3 +12,4 @@ export { usePlayerStatistics, useTopPlayers, usePlayerComparison } from './usePl
 export { useTeamStatistics, useTopTeams } from './useTeamStatistics';
 export { useMatchStatistics, useRecentMatches } from './useMatchStatistics';
 export { useCustomWidgets } from './useCustomWidgets';
+export { useEventAnalytics } from './useEventAnalytics';

@@ -598,15 +598,28 @@ export function getAvailableCategories(profileId?: string): Array<{ id: string; 
   return db.getAllSync(`SELECT id, name, profile_id AS profileId FROM scout_categories ORDER BY name`);
 }
 
-export function getAvailableEvents(categoryId?: string): Array<{ id: string; name: string; icon: string; categoryId: string }> {
+export function getAvailableEvents(categoryId?: string): Array<{ id: string; name: string; icon: string; categoryId: string; isPositive: number }> {
   const db = getDatabase();
   if (categoryId) {
     return db.getAllSync(
-      `SELECT id, name, icon, category_id AS categoryId FROM scout_events WHERE category_id = ? ORDER BY name`,
+      `SELECT id, name, icon, category_id AS categoryId, is_positive AS isPositive FROM scout_events WHERE category_id = ? ORDER BY name`,
       [categoryId]
     );
   }
-  return db.getAllSync(`SELECT id, name, icon, category_id AS categoryId FROM scout_events ORDER BY name`);
+  return db.getAllSync(`SELECT id, name, icon, category_id AS categoryId, is_positive AS isPositive FROM scout_events ORDER BY name`);
+}
+
+export function getAvailableMatches(): Array<{ id: string; label: string; date: string; opponent: string }> {
+  const db = getDatabase();
+  const rows = db.getAllSync<{ id: string; date: string; opponent_name: string }>(
+    `SELECT id, date, opponent_name FROM matches ORDER BY date DESC`
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    date: r.date,
+    opponent: r.opponent_name,
+    label: `${r.date ? r.date.substring(0, 10) : ''} vs ${r.opponent_name}`,
+  }));
 }
 
 export function getAvailableOpponents(): string[] {
@@ -642,17 +655,146 @@ export function getWidgetData(
   widget: import('@/types/dashboard.types').CustomWidget,
   filters: DashboardFilters
 ): import('@/types/dashboard.types').WidgetChartData {
+  // Use V2 when new builder fields are present
+  if (widget.groupBy || widget.aggregation || widget.filterEventId !== undefined || widget.filterCategoryId !== undefined) {
+    return getWidgetDataV2(widget, filters);
+  }
   const db = getDatabase();
   const { clause: matchWhere, params: matchParams } = buildWhereClause(filters);
-
   if (widget.comparisonMode === 'players') {
     return getPlayerWidgetData(widget, matchWhere, matchParams, db);
   } else if (widget.comparisonMode === 'teams') {
     return getTeamWidgetData(widget, matchWhere, matchParams, db);
+  } else if (widget.comparisonMode === 'matches') {
+    return getMatchWidgetData(widget, matchWhere, matchParams, db);
+  } else if (widget.comparisonMode === 'categories') {
+    return getCategoryWidgetData(widget, matchWhere, matchParams, db);
   } else {
     return getEventWidgetData(widget, matchWhere, matchParams, db);
   }
 }
+
+function getWidgetDataV2(
+  widget: import('@/types/dashboard.types').CustomWidget,
+  filters: DashboardFilters
+): import('@/types/dashboard.types').WidgetChartData {
+  const db = getDatabase();
+  const groupBy = widget.groupBy || widget.comparisonMode || 'players';
+  const aggregation = widget.aggregation || 'count';
+
+  const conditions: string[] = [];
+  const params: any[] = [];
+
+  if (widget.filterTeamId) { conditions.push('m.team_id = ?'); params.push(widget.filterTeamId); }
+  if (widget.filterPlayerId) { conditions.push('me.player_id = ?'); params.push(widget.filterPlayerId); }
+  if (widget.filterMatchId) { conditions.push('me.match_id = ?'); params.push(widget.filterMatchId); }
+  if (widget.filterCategoryId) { conditions.push('se.category_id = ?'); params.push(widget.filterCategoryId); }
+  if (widget.filterEventId) { conditions.push('me.event_id = ?'); params.push(widget.filterEventId); }
+  if (widget.onlyPositive) conditions.push('se.is_positive = 1');
+  if (widget.onlyNegative) conditions.push('se.is_positive = 0');
+  if (filters.dateFrom) { conditions.push('m.date >= ?'); params.push(filters.dateFrom); }
+  if (filters.dateTo) { conditions.push('m.date <= ?'); params.push(filters.dateTo); }
+  if (filters.teamIds?.length) {
+    conditions.push(`m.team_id IN (${filters.teamIds.map(() => '?').join(',')})`);
+    params.push(...filters.teamIds);
+  }
+  if (filters.matchIds?.length) {
+    conditions.push(`m.id IN (${filters.matchIds.map(() => '?').join(',')})`);
+    params.push(...filters.matchIds);
+  }
+
+  const baseFrom = `FROM match_events me
+    INNER JOIN scout_events se ON se.id = me.event_id
+    INNER JOIN matches m ON m.id = me.match_id`;
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  let total = 1;
+  if (aggregation === 'pct') {
+    const t = db.getFirstSync<{ count: number }>(`SELECT COUNT(*) as count ${baseFrom} ${where}`, params);
+    total = Math.max(t?.count || 1, 1);
+  }
+  let matchCount = 1;
+  if (aggregation === 'avg') {
+    const mc = db.getFirstSync<{ count: number }>(
+      `SELECT COUNT(DISTINCT me.match_id) as count ${baseFrom} ${where}`, params
+    );
+    matchCount = Math.max(mc?.count || 1, 1);
+  }
+
+  let groupField: string;
+  switch (groupBy) {
+    case 'players': groupField = 'me.player_id'; break;
+    case 'matches': groupField = 'me.match_id'; break;
+    case 'categories': groupField = 'se.category_id'; break;
+    case 'events': groupField = 'me.event_id'; break;
+    case 'teams': groupField = 'm.team_id'; break;
+    default: groupField = 'me.player_id';
+  }
+
+  const rows = db.getAllSync<{ entity_id: string; raw_count: number }>(
+    `SELECT ${groupField} as entity_id, COUNT(*) as raw_count
+     ${baseFrom} ${where}
+     GROUP BY ${groupField}
+     ORDER BY raw_count DESC LIMIT 30`,
+    params
+  );
+
+  if (!rows.length) {
+    return { labels: [], series: [{ eventId: 'empty', eventName: 'Sem dados', eventIcon: '📊', color: '#3b82f6', values: [] }] };
+  }
+
+  const labels = rows.map(row => {
+    if (!row.entity_id) return '?';
+    switch (groupBy) {
+      case 'players': {
+        const p = db.getFirstSync<{ name: string }>(`SELECT name FROM players WHERE id = ?`, [row.entity_id]);
+        return p?.name.split(' ')[0] || '?';
+      }
+      case 'matches': {
+        const m2 = db.getFirstSync<{ date: string; opponent_name: string }>(`SELECT date, opponent_name FROM matches WHERE id = ?`, [row.entity_id]);
+        return m2 ? `${(m2.date ?? '').substring(5, 10)} ${(m2.opponent_name ?? '').split(' ')[0]}` : '?';
+      }
+      case 'categories': {
+        const c = db.getFirstSync<{ name: string }>(`SELECT name FROM scout_categories WHERE id = ?`, [row.entity_id]);
+        return c?.name || '?';
+      }
+      case 'events': {
+        const e = db.getFirstSync<{ name: string }>(`SELECT name FROM scout_events WHERE id = ?`, [row.entity_id]);
+        return e?.name || '?';
+      }
+      case 'teams': {
+        const t2 = db.getFirstSync<{ name: string }>(`SELECT name FROM teams WHERE id = ?`, [row.entity_id]);
+        return t2?.name || '?';
+      }
+      default: return row.entity_id;
+    }
+  });
+
+  const yAxisSuffix = aggregation === 'pct' ? '%' : '';
+  const values = rows.map(row => {
+    const count = row.raw_count;
+    if (aggregation === 'pct') return Math.round(count * 100 / total);
+    if (aggregation === 'avg') return parseFloat((count / matchCount).toFixed(1));
+    return count;
+  });
+
+  let seriesName = 'Dados';
+  let seriesIcon = '📊';
+  if (widget.filterEventId) {
+    const ev = db.getFirstSync<{ name: string; icon: string }>(`SELECT name, icon FROM scout_events WHERE id = ?`, [widget.filterEventId]);
+    seriesName = ev?.name || 'Evento';
+    seriesIcon = ev?.icon || '⚽';
+  } else if (widget.filterCategoryId) {
+    const cat = db.getFirstSync<{ name: string }>(`SELECT name FROM scout_categories WHERE id = ?`, [widget.filterCategoryId]);
+    seriesName = cat?.name || 'Categoria';
+  }
+
+  return {
+    labels,
+    series: [{ eventId: widget.filterEventId || 'data', eventName: seriesName, eventIcon: seriesIcon, color: '#3b82f6', values }],
+  };
+}
+
 
 function getPlayerWidgetData(
   widget: import('@/types/dashboard.types').CustomWidget,
@@ -666,7 +808,7 @@ function getPlayerWidgetData(
       `SELECT name, number FROM players WHERE id = ?`,
       [playerId]
     ) as { name: string; number: number } | null;
-    return player ? `#${player.number} ${player.name.split(' ')[0]}` : 'Unknown';
+    return player ? player.name.split(' ')[0] : 'Unknown';
   });
 
   // Build series for each selected event
@@ -782,6 +924,92 @@ function getEventWidgetData(
   return { labels, series: [series] };
 }
 
+function getMatchWidgetData(
+  widget: import('@/types/dashboard.types').CustomWidget,
+  matchWhere: string,
+  matchParams: any[],
+  db: any
+): import('@/types/dashboard.types').WidgetChartData {
+  const matchIds = widget.comparedEntityIds.length > 0
+    ? widget.comparedEntityIds
+    : (db.getAllSync<{ id: string }>(`SELECT id FROM matches ORDER BY date DESC LIMIT 10`)).map((r: { id: string }) => r.id);
+
+  const labels = matchIds.map((matchId: string) => {
+    const m = db.getFirstSync<{ date: string; opponent_name: string }>(
+      `SELECT date, opponent_name FROM matches WHERE id = ?`, [matchId]
+    );
+    if (!m) return matchId;
+    const d = m.date ? m.date.substring(5, 10) : '?'; // MM-DD
+    return `${d} ${m.opponent_name.split(' ')[0]}`;
+  });
+
+  const series: import('@/types/dashboard.types').WidgetSeries[] = widget.selectedEventIds.map((eventId) => {
+    const event = db.getFirstSync<{ name: string; icon: string }>(
+      `SELECT name, icon FROM scout_events WHERE id = ?`, [eventId]
+    );
+    const values = matchIds.map((matchId: string) => {
+      const result = db.getFirstSync<{ count: number }>(
+        `SELECT COUNT(*) AS count FROM match_events WHERE match_id = ? AND event_id = ?`,
+        [matchId, eventId]
+      );
+      return result?.count || 0;
+    });
+    return {
+      eventId,
+      eventName: event?.name || 'Unknown',
+      eventIcon: event?.icon || '⚽',
+      color: generateEventColor(eventId),
+      values,
+    };
+  });
+
+  return { labels, series };
+}
+
+function getCategoryWidgetData(
+  widget: import('@/types/dashboard.types').CustomWidget,
+  matchWhere: string,
+  matchParams: any[],
+  db: any
+): import('@/types/dashboard.types').WidgetChartData {
+  // Each category is a bar/slice. Events are filtered to selectedEventIds if set.
+  const categories = db.getAllSync<{ id: string; name: string }>(
+    `SELECT id, name FROM scout_categories ORDER BY name`
+  );
+
+  const eventFilter = widget.selectedEventIds.length > 0
+    ? `AND me.event_id IN (${widget.selectedEventIds.map(() => '?').join(',')})`
+    : '';
+  const eventParams = widget.selectedEventIds.length > 0 ? widget.selectedEventIds : [];
+
+  const labels = categories.map((c: { id: string; name: string }) => c.name);
+
+  const values = categories.map((cat: { id: string; name: string }) => {
+    const result = db.getFirstSync<{ count: number }>(
+      `SELECT COUNT(*) AS count
+       FROM match_events me
+       INNER JOIN scout_events se ON me.event_id = se.id
+       INNER JOIN matches m ON me.match_id = m.id
+       WHERE se.category_id = ?
+       ${eventFilter}
+       ${matchWhere ? `AND ${matchWhere.replace('WHERE ', '')}` : ''}`,
+      [cat.id, ...eventParams, ...matchParams]
+    );
+    return result?.count || 0;
+  });
+
+  return {
+    labels,
+    series: [{
+      eventId: 'categories',
+      eventName: 'Por Categoria',
+      eventIcon: '🏷️',
+      color: '#3b82f6',
+      values,
+    }],
+  };
+}
+
 function generateEventColor(eventId: string): string {
   const colors = [
     '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6',
@@ -793,9 +1021,7 @@ function generateEventColor(eventId: string): string {
 
 // ─── Widget CRUD ─────────────────────────────────────────────────────────────
 
-export function saveCustomWidget(widget: import('@/types/dashboard.types').CustomWidget): void {
-  const db = getDatabase();
-  
+function initCustomWidgetsTable(db: any): void {
   db.execSync(`
     CREATE TABLE IF NOT EXISTS custom_widgets (
       id TEXT PRIMARY KEY,
@@ -806,24 +1032,51 @@ export function saveCustomWidget(widget: import('@/types/dashboard.types').Custo
       compared_entity_ids TEXT NOT NULL,
       show_values INTEGER NOT NULL DEFAULT 1,
       show_legend INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      kpi_event_id TEXT,
+      kpi_calc_mode TEXT,
+      sort_order INTEGER
     );
   `);
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN kpi_event_id TEXT`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN kpi_calc_mode TEXT`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN sort_order INTEGER`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN group_by TEXT`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN aggregation TEXT`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN filter_team_id TEXT`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN filter_player_id TEXT`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN filter_match_id TEXT`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN filter_category_id TEXT`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN filter_event_id TEXT`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN only_positive INTEGER`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN only_negative INTEGER`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN widget_height TEXT`); } catch {}
+}
+
+export function saveCustomWidget(widget: import('@/types/dashboard.types').CustomWidget): void {
+  const db = getDatabase();
+  initCustomWidgetsTable(db);
 
   db.runSync(
     `INSERT OR REPLACE INTO custom_widgets 
-     (id, title, type, selected_event_ids, comparison_mode, compared_entity_ids, show_values, show_legend, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (id, title, type, selected_event_ids, comparison_mode, compared_entity_ids, show_values, show_legend, created_at,
+      kpi_event_id, kpi_calc_mode, sort_order,
+      group_by, aggregation, filter_team_id, filter_player_id, filter_match_id, filter_category_id, filter_event_id,
+      only_positive, only_negative, widget_height)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      widget.id,
-      widget.title,
-      widget.type,
+      widget.id, widget.title, widget.type,
       JSON.stringify(widget.selectedEventIds),
       widget.comparisonMode,
       JSON.stringify(widget.comparedEntityIds),
-      widget.showValues ? 1 : 0,
-      widget.showLegend ? 1 : 0,
+      widget.showValues ? 1 : 0, widget.showLegend ? 1 : 0,
       widget.createdAt,
+      widget.kpiEventId ?? null, widget.kpiCalcMode ?? null, widget.order ?? null,
+      widget.groupBy ?? null, widget.aggregation ?? null,
+      widget.filterTeamId ?? null, widget.filterPlayerId ?? null, widget.filterMatchId ?? null,
+      widget.filterCategoryId ?? null, widget.filterEventId ?? null,
+      widget.onlyPositive ? 1 : 0, widget.onlyNegative ? 1 : 0,
+      widget.height ?? null,
     ]
   );
 }
@@ -832,8 +1085,9 @@ export function getCustomWidgets(): import('@/types/dashboard.types').CustomWidg
   const db = getDatabase();
   
   try {
-    const rows = db.getAllSync<any>(`SELECT * FROM custom_widgets ORDER BY created_at DESC`);
-    return rows.map((row) => ({
+    initCustomWidgetsTable(db);
+    const rows = db.getAllSync<any>(`SELECT * FROM custom_widgets ORDER BY COALESCE(sort_order, 9999), created_at DESC`);
+    return rows.map((row: any, idx: number) => ({
       id: row.id,
       title: row.title,
       type: row.type,
@@ -843,6 +1097,19 @@ export function getCustomWidgets(): import('@/types/dashboard.types').CustomWidg
       showValues: row.show_values === 1,
       showLegend: row.show_legend === 1,
       createdAt: row.created_at,
+      kpiEventId: row.kpi_event_id ?? undefined,
+      kpiCalcMode: row.kpi_calc_mode ?? undefined,
+      order: row.sort_order ?? idx,
+      groupBy: row.group_by ?? undefined,
+      aggregation: row.aggregation ?? undefined,
+      filterTeamId: row.filter_team_id ?? undefined,
+      filterPlayerId: row.filter_player_id ?? undefined,
+      filterMatchId: row.filter_match_id ?? undefined,
+      filterCategoryId: row.filter_category_id ?? undefined,
+      filterEventId: row.filter_event_id ?? undefined,
+      onlyPositive: row.only_positive === 1,
+      onlyNegative: row.only_negative === 1,
+      height: row.widget_height ?? undefined,
     }));
   } catch {
     return [];
@@ -852,4 +1119,64 @@ export function getCustomWidgets(): import('@/types/dashboard.types').CustomWidg
 export function deleteCustomWidget(id: string): void {
   const db = getDatabase();
   db.runSync(`DELETE FROM custom_widgets WHERE id = ?`, [id]);
+}
+
+export function reorderCustomWidgets(orderedIds: string[]): void {
+  const db = getDatabase();
+  orderedIds.forEach((id, idx) => {
+    db.runSync(`UPDATE custom_widgets SET sort_order = ? WHERE id = ?`, [idx, id]);
+  });
+}
+
+export function getKpiValue(
+  widget: import('@/types/dashboard.types').CustomWidget,
+  filters: DashboardFilters
+): import('@/types/dashboard.types').KpiData {
+  const db = getDatabase();
+  const { clause: matchWhere, params: matchParams } = buildWhereClause(filters);
+  const eventId = widget.kpiEventId || '';
+  const calcMode = widget.kpiCalcMode || 'total';
+
+  const event = db.getFirstSync<{ name: string; icon: string }>(
+    `SELECT name, icon FROM scout_events WHERE id = ?`,
+    [eventId]
+  );
+  const eventName = event?.name || 'Evento';
+  const eventIcon = event?.icon || '📊';
+
+  const countQuery = `
+    SELECT COUNT(*) as count
+    FROM match_events me
+    INNER JOIN matches m ON me.match_id = m.id
+    WHERE me.event_id = ?
+    ${matchWhere ? `AND ${matchWhere.replace('WHERE', '')}` : ''}
+  `;
+  const eventCount = db.getFirstSync<{ count: number }>(countQuery, [eventId, ...matchParams])?.count || 0;
+
+  if (calcMode === 'total') {
+    return { value: eventCount, formatted: eventCount.toString(), unit: '', eventName, eventIcon, calcModeLabel: 'Total de Registros' };
+  }
+
+  if (calcMode === 'pct') {
+    const totalQuery = `
+      SELECT COUNT(*) as count FROM match_events me
+      INNER JOIN matches m ON me.match_id = m.id
+      ${matchWhere}
+    `;
+    const total = db.getFirstSync<{ count: number }>(totalQuery, matchParams)?.count || 0;
+    const pct = total > 0 ? (eventCount / total) * 100 : 0;
+    return { value: pct, formatted: pct.toFixed(1), unit: '%', eventName, eventIcon, calcModeLabel: '% do Total de Eventos' };
+  }
+
+  // avg
+  const matchesQuery = `
+    SELECT COUNT(DISTINCT me.match_id) as count
+    FROM match_events me
+    INNER JOIN matches m ON me.match_id = m.id
+    WHERE me.event_id = ?
+    ${matchWhere ? `AND ${matchWhere.replace('WHERE', '')}` : ''}
+  `;
+  const matchCount = db.getFirstSync<{ count: number }>(matchesQuery, [eventId, ...matchParams])?.count || 0;
+  const avg = matchCount > 0 ? eventCount / matchCount : 0;
+  return { value: avg, formatted: avg.toFixed(1), unit: '/partida', eventName, eventIcon, calcModeLabel: 'Média por Partida' };
 }
