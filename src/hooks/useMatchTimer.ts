@@ -10,13 +10,44 @@ export function useMatchTimer() {
   const [elapsed, setElapsed] = useState(live.elapsedSeconds);
   const [period, setPeriod] = useState<0 | 1 | 2>(live.period);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentMatchIdRef = useRef(live.match?.id);
+
+  /**
+   * Sincronizar estado local com o store quando a partida mudar
+   */
+  useEffect(() => {
+    if (live.match?.id !== currentMatchIdRef.current) {
+      // Nova partida - sincronizar estados
+      currentMatchIdRef.current = live.match?.id;
+      setElapsed(live.elapsedSeconds);
+      setPeriod(live.period);
+      setIsRunning(live.isRunning);
+      
+      // Limpar timer anterior
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      
+      // Se o timer estava rodando, reiniciar
+      if (live.isRunning) {
+        timerRef.current = setInterval(() => {
+          setElapsed((e) => {
+            const next = e + 1;
+            setTimer(next, true);
+            return next;
+          });
+        }, 1000);
+      }
+    }
+  }, [live.match?.id, live.elapsedSeconds, live.period, live.isRunning, setTimer]);
 
   /**
    * On mount: if the timer was running when the screen was left, restart the interval
    * so the counter resumes seamlessly.
    */
   useEffect(() => {
-    if (live.isRunning) {
+    if (live.isRunning && !timerRef.current) {
       timerRef.current = setInterval(() => {
         setElapsed((e) => {
           const next = e + 1;
@@ -46,6 +77,12 @@ export function useMatchTimer() {
       setIsRunning(false);
       setTimer(elapsed, false);
     } else {
+      // Se period é 0 (antes de iniciar), mudar para 1 (primeiro tempo)
+      if (period === 0) {
+        setPeriod(1);
+        storePeriod(1);
+      }
+      
       timerRef.current = setInterval(() => {
         setElapsed((e) => {
           const next = e + 1;
@@ -55,7 +92,7 @@ export function useMatchTimer() {
       }, 1000);
       setIsRunning(true);
     }
-  }, [isRunning, elapsed, setTimer]);
+  }, [isRunning, elapsed, period, setTimer, storePeriod]);
 
   /**
    * Marcar intervalo (fim do 1º tempo) — pausa e avança para período 2

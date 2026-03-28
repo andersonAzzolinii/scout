@@ -69,14 +69,14 @@ export function getPlayerFieldPeriods(
 }
 
 /**
- * Retorna jogadores atualmente em quadra com seus timestamps de entrada
+ * Retorna jogadores atualmente em quadra com seus timestamps de entrada e elapsed pausado
  */
 export function getActiveFieldPlayers(
   matchId: string
-): { player_id: string; start_timestamp: number }[] {
+): { player_id: string; start_timestamp: number; paused_elapsed_seconds: number | null }[] {
   const db = getDatabase();
-  return db.getAllSync<{ player_id: string; start_timestamp: number }>(
-    `SELECT player_id, start_timestamp FROM field_periods
+  return db.getAllSync<{ player_id: string; start_timestamp: number; paused_elapsed_seconds: number | null }>(
+    `SELECT player_id, start_timestamp, paused_elapsed_seconds FROM field_periods
      WHERE match_id = ? AND end_minute IS NULL`,
     [matchId]
   );
@@ -93,6 +93,23 @@ export function isPlayerOnField(matchId: string, playerId: string): boolean {
     [matchId, playerId]
   );
   return (result?.count ?? 0) > 0;
+}
+
+/**
+ * Atualiza o paused_elapsed_seconds de um período ativo em quadra
+ */
+export function updateActiveFieldPausedElapsed(
+  matchId: string,
+  playerId: string,
+  pausedElapsed: number | null
+): void {
+  const db = getDatabase();
+  db.runSync(
+    `UPDATE field_periods
+     SET paused_elapsed_seconds = ?
+     WHERE match_id = ? AND player_id = ? AND end_minute IS NULL`,
+    [pausedElapsed, matchId, playerId]
+  );
 }
 
 /**

@@ -81,12 +81,38 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
     const { live } = get();
     const events = eventRepo.getMatchEvents(match.id);
     const players = matchRepo.getMatchPlayers(match.id);
+    
+    // Carregar estado do timer do banco de dados
+    const elapsedSeconds = match.elapsed_seconds ?? 0;
+    const isRunning = match.is_timer_running === 1;
+    const period = (match.current_period ?? 1) as 0 | 1 | 2;
+    
     if (live.match?.id === match.id) {
-      // Same match — refresh data only, preserve timer/period state
-      set((state) => ({ live: { ...state.live, match, events, players } }));
+      // Same match — refresh data
+      set((state) => ({ 
+        live: { 
+          ...state.live, 
+          match, 
+          events, 
+          players,
+          elapsedSeconds,
+          isRunning,
+          period
+        } 
+      }));
     } else {
-      // New match — full reset
-      set({ live: { ...defaultLive, match, events, players } });
+      // New match — load from database
+      set({ 
+        live: { 
+          ...defaultLive, 
+          match, 
+          events, 
+          players,
+          elapsedSeconds,
+          isRunning,
+          period
+        } 
+      });
     }
   },
   endLiveSession: () => {
@@ -128,10 +154,24 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
     }));
   },
   setTimer: (elapsedSeconds, isRunning) => {
-    set((state) => ({ live: { ...state.live, elapsedSeconds, isRunning } }));
+    set((state) => {
+      const { live } = state;
+      if (live.match) {
+        // Persistir no banco de dados
+        matchRepo.updateMatchTimer(live.match.id, elapsedSeconds, isRunning, live.period);
+      }
+      return { live: { ...live, elapsedSeconds, isRunning } };
+    });
   },
   setPeriod: (period) => {
-    set((state) => ({ live: { ...state.live, period } }));
+    set((state) => {
+      const { live } = state;
+      if (live.match) {
+        // Persistir no banco de dados
+        matchRepo.updateMatchTimer(live.match.id, live.elapsedSeconds, live.isRunning, period);
+      }
+      return { live: { ...live, period } };
+    });
   },
   saveBenchElapsed: (byPlayerId) => {
     set((state) => ({

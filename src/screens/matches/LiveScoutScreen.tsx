@@ -114,8 +114,12 @@ export function LiveScoutScreen() {
   const benchStartTimestamps = useRef<Record<string, number>>({});
   // wall-clock timestamps (ms) when each player entered the field
   const fieldStartTimestamps = useRef<Record<string, number>>({});
+  // elapsed seconds when timer was paused for each field player
+  const fieldPausedElapsed = useRef<Record<string, number>>({});
   // tick to force re-render every second while players are on bench
   const [, setTick] = useState(0);
+  // tick to force re-render when field timestamps change
+  const [, setFieldTick] = useState(0);
   
   // Animation for events modal
   const modalScaleAnim = React.useRef(new Animated.Value(0)).current;
@@ -143,9 +147,24 @@ export function LiveScoutScreen() {
       benchStartTimestamps.current[p.player_id] = Date.now() - pausedSec * 1000;
     });
 
-    // Restore field timers
+    // Restore field timers - usar paused_elapsed se existir, senão calcular do timestamp
     fieldRepo.getActiveFieldPlayers(match.id).forEach((p) => {
-      fieldStartTimestamps.current[p.player_id] = p.start_timestamp ?? Date.now();
+      if (p.start_timestamp) {
+        // Se tem elapsed pausado, usar ele; senão calcular
+        const elapsed = p.paused_elapsed_seconds !== null && p.paused_elapsed_seconds !== undefined
+          ? p.paused_elapsed_seconds
+          : Math.floor((Date.now() - p.start_timestamp) / 1000);
+        
+        console.log(`[RESTORE] Player ${p.player_id.slice(0,8)} - Timestamp: ${p.start_timestamp}, Paused Elapsed: ${p.paused_elapsed_seconds}, Calculated Elapsed: ${elapsed}s`);
+        
+        // Ajustar ref para refletir o elapsed correto
+        fieldStartTimestamps.current[p.player_id] = Date.now() - elapsed * 1000;
+        
+        // Se estava pausado, armazenar no ref de pause
+        if (p.paused_elapsed_seconds !== null && p.paused_elapsed_seconds !== undefined) {
+          fieldPausedElapsed.current[p.player_id] = p.paused_elapsed_seconds;
+        }
+      }
     });
 
     const cats = profileRepo.getCategoriesByProfile(match.profile_id);
@@ -269,19 +288,50 @@ export function LiveScoutScreen() {
       if (!fieldRepo.isPlayerOnField(match.id, player.player_id)) {
         fieldRepo.startFieldPeriod(match.id, player.player_id, minute, second);
         fieldStartTimestamps.current[player.player_id] = Date.now();
+        setFieldTick(t => t + 1);
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, isRunning]);
 
-  // Quando o timer pausa/retoma, ajustar timestamps dos field players (como o bench)
+  // Quando o timer pausa/retoma, ajustar timestamps dos field players
   useEffect(() => {
+    if (!match) return;
+    
     if (!isRunning) {
-      // Timer pausou: registrar o elapsed de cada jogador em campo para retomar corretamente
+      console.log('\n[PAUSE] Timer pausado - Armazenando elapsed...');
+      // Timer pausou: calcular elapsed e ARMAZENAR no banco (não ajustar timestamp)
       Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
-        const elapsed = Math.floor((Date.now() - fieldStartTimestamps.current[playerId]) / 1000);
-        fieldStartTimestamps.current[playerId] = Date.now() - elapsed * 1000;
+        const oldTimestamp = fieldStartTimestamps.current[playerId];
+        const elapsed = Math.floor((Date.now() - oldTimestamp) / 1000);
+        fieldPausedElapsed.current[playerId] = elapsed;
+        console.log(`[PAUSE] Player ${playerId.slice(0,8)} - Timestamp: ${oldTimestamp}, Elapsed: ${elapsed}s`);
+        
+        // Congelar ref localmente (para display enquanto estiver na tela)
+        const frozenTimestamp = Date.now() - elapsed * 1000;
+        fieldStartTimestamps.current[playerId] = frozenTimestamp;
+        
+        // Armazenar elapsed no banco (não modifica timestamp)
+        fieldRepo.updateActiveFieldPausedElapsed(match.id, playerId, elapsed);
+        console.log(`[PAUSE] Player ${playerId.slice(0,8)} - DB atualizado: elapsed=${elapsed}s armazenado`);
       });
+      setFieldTick(t => t + 1);
+    } else {
+      console.log('\n[RESUME] Timer retomado - Limpando pause...');
+      // Timer retomou: ajustar timestamps para continuar de onde parou e limpar pause no banco
+      Object.keys(fieldPausedElapsed.current).forEach((playerId) => {
+        const pausedElapsed = fieldPausedElapsed.current[playerId];
+        const resumedTimestamp = Date.now() - pausedElapsed * 1000;
+        console.log(`[RESUME] Player ${playerId.slice(0,8)} - Resumed: ${resumedTimestamp}, Elapsed: ${pausedElapsed}s`);
+        fieldStartTimestamps.current[playerId] = resumedTimestamp;
+        
+        // Limpar pause no banco
+        fieldRepo.updateActiveFieldPausedElapsed(match.id, playerId, null);
+        console.log(`[RESUME] Player ${playerId.slice(0,8)} - DB: pause limpo`);
+      });
+      // Limpar o registro de pause local
+      fieldPausedElapsed.current = {};
+      setFieldTick(t => t + 1);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning]);
@@ -302,8 +352,8 @@ export function LiveScoutScreen() {
 
     // If has selected player from bench, position directly
     if (selectedPlayerFromBench) {
-      // Se o jogador estava no banco, finalizar o período
-      if (match) {
+      // Se o jogador estava no banco, finalizar o período (apenas se a partida já começou)
+      if (match && period > 0) {
         const isOnBench = benchRepo.isPlayerOnBench(match.id, selectedPlayerFromBench.player_id);
         if (isOnBench) {
           const minute = Math.floor(elapsed / 60);
@@ -321,12 +371,13 @@ export function LiveScoutScreen() {
       // Save position to database
       if (match) {
         matchRepo.updateMatchPlayerPosition(match.id, selectedPlayerFromBench.player_id, position);
-            // Iniciar período em quadra se a partida já tiver começado
-            if (period > 0) {
+            // Iniciar período em quadra apenas se o timer estiver rodando
+            if (isRunning && period > 0) {
               const minute = Math.floor(elapsed / 60);
               const second = elapsed % 60;
               fieldRepo.startFieldPeriod(match.id, selectedPlayerFromBench.player_id, minute, second);
               fieldStartTimestamps.current[selectedPlayerFromBench.player_id] = Date.now();
+              setFieldTick(t => t + 1);
             }
       }
       return;
@@ -340,14 +391,16 @@ export function LiveScoutScreen() {
   const handlePlayerSelect = (player: typeof matchPlayers[0]) => {
     if (!selectedPositionSlot || !match) return;
     
-    // Se o jogador estava no banco, finalizar o período
-    const isOnBench = benchRepo.isPlayerOnBench(match.id, player.player_id);
-    if (isOnBench) {
-      const minute = Math.floor(elapsed / 60);
-      const second = elapsed % 60;
-      benchRepo.endBenchPeriod(match.id, player.player_id, minute, second);
-      delete benchStartTimestamps.current[player.player_id];
-      clearBenchElapsed(player.player_id);
+    // Se o jogador estava no banco, finalizar o período (apenas se a partida já começou)
+    if (period > 0) {
+      const isOnBench = benchRepo.isPlayerOnBench(match.id, player.player_id);
+      if (isOnBench) {
+        const minute = Math.floor(elapsed / 60);
+        const second = elapsed % 60;
+        benchRepo.endBenchPeriod(match.id, player.player_id, minute, second);
+        delete benchStartTimestamps.current[player.player_id];
+        clearBenchElapsed(player.player_id);
+      }
     }
     
     setPositionedPlayers([...positionedPlayers, { 
@@ -356,12 +409,13 @@ export function LiveScoutScreen() {
     }]);
     // Save position to database
     matchRepo.updateMatchPlayerPosition(match.id, player.player_id, selectedPositionSlot.position);
-    // Iniciar período em quadra se a partida já tiver começado
-    if (period > 0) {
+    // Iniciar período em quadra apenas se o timer estiver rodando
+    if (isRunning && period > 0) {
       const minute = Math.floor(elapsed / 60);
       const second = elapsed % 60;
       fieldRepo.startFieldPeriod(match.id, player.player_id, minute, second);
       fieldStartTimestamps.current[player.player_id] = Date.now();
+      setFieldTick(t => t + 1);
     }
     setSelectedPositionSlot(null);
   };
@@ -421,6 +475,7 @@ export function LiveScoutScreen() {
     // Finalizar período em quadra
     fieldRepo.endFieldPeriod(match.id, live.selectedPlayerId, minute, second);
     delete fieldStartTimestamps.current[live.selectedPlayerId];
+    setFieldTick(t => t + 1);
     
     setShowEventsModal(false);
   };
@@ -444,6 +499,7 @@ export function LiveScoutScreen() {
     // Finalizar período em quadra do jogador que sai
     fieldRepo.endFieldPeriod(match.id, live.selectedPlayerId, minute, second);
     delete fieldStartTimestamps.current[live.selectedPlayerId];
+    setFieldTick(t => t + 1);
 
     // Jogador que entra: encerra timer do banco (se ativo) e ocupa a posição
     const isOnBench = benchRepo.isPlayerOnBench(match.id, incomingPlayer.player_id);
@@ -455,6 +511,7 @@ export function LiveScoutScreen() {
     // Iniciar período em quadra do jogador que entra
     fieldRepo.startFieldPeriod(match.id, incomingPlayer.player_id, minute, second);
     fieldStartTimestamps.current[incomingPlayer.player_id] = Date.now();
+    setFieldTick(t => t + 1);
 
     const newPositions = outgoingPosition != null
       ? [...updatedPositions, { player: incomingPlayer, position: outgoingPosition }]
@@ -533,184 +590,138 @@ export function LiveScoutScreen() {
   }
 
   return (
-    <View className="flex-1 bg-gray-950" style={{ paddingTop: insets.top }}>
+    <View className="flex-1 bg-gray-950" style={{ 
+      paddingTop: insets.top,
+      borderWidth: !isRunning && period > 0 ? 3 : 0,
+      borderColor: 'rgba(251,191,36,0.4)',
+    }}>
       {/* ─── Top bar ─────────────────────────────────────────────────────────── */}
-      <View className="flex-row items-center px-3 py-1.5 border-b border-gray-800">
-        {/* <TouchableOpacity
-          onPress={() => {
-            Alert.alert('Sair do Scout?', 'O progresso não será perdido.', [
-              { text: 'Cancelar', style: 'cancel' },
-              {
-                text: 'Sair',
-                onPress: () => {
-                  if (timerRef.current) clearInterval(timerRef.current);
-                  navigation.goBack();
-                },
-              },
-            ]);
-          }}
-          className="mr-2"
-        >
-          <Icon name="close" size={20} color="#9ca3af" />
-        </TouchableOpacity> */}
-
-        <View className="flex-1">
-          <Text className="text-white font-bold text-sm" numberOfLines={1}>
-            {match.team_name} vs {match.opponent_name}
-          </Text>
-          <Text className="text-gray-400 text-xs mt-0.5">
-            Jogadores: {positionedPlayers.length}/5
-          </Text>
-          {period === 0 && (
-            <Text className="text-amber-400 text-xs font-semibold mt-0.5">
-              ⚠️ Posicione os jogadores antes de iniciar
+      <View style={{ borderBottomWidth: 1, borderBottomColor: '#1f2937', paddingHorizontal: 12, paddingVertical: 8 }}>
+        {/* Match Info and Controls */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+              {match.team_name} vs {match.opponent_name}
             </Text>
-          )}
-          {selectedPlayerFromBench && (
-            <Text className="text-primary-400 text-xs">
-              #{selectedPlayerFromBench.player_number} - Toque em uma posição na quadra
-            </Text>
-          )}
-        </View>
-
-        {/* Timer */}
-        <View className="flex-1 items-center justify-center flex-row gap-2">
-          <TouchableOpacity
-            onPress={() => {
-              if (period === 0) {
-                // Tentar iniciar a partida
-                if (positionedPlayers.length === 0) {
-                  Alert.alert(
-                    'Posicione os Jogadores',
-                    'É necessário posicionar pelo menos um jogador na quadra antes de iniciar a partida.',
-                    [{ text: 'OK' }]
-                  );
-                  return;
-                }
-                // Iniciar primeiro tempo
-                toggleTimer();
-              } else {
-                // Pausar/retomar durante a partida
-                toggleTimer();
-              }
-            }}
-            style={{
-              flexDirection: 'row', alignItems: 'center', gap: 8,
-              backgroundColor: period === 0 ? '#14532d' : isRunning ? '#92400e' : '#14532d',
-              borderWidth: 2,
-              borderColor: period === 0 ? '#22c55e' : isRunning ? '#f59e0b' : '#22c55e',
-              borderRadius: 14, paddingHorizontal: 18,
-              height: 48,
-            }}
-          >
-            <Icon
-              name={period === 0 ? 'play-circle' : isRunning ? 'pause-circle' : 'play-circle'}
-              size={22}
-              color={period === 0 ? '#22c55e' : isRunning ? '#f59e0b' : '#22c55e'}
-            />
-            <Text style={{ color: '#ffffff', fontFamily: 'monospace', fontSize: 18, fontWeight: '800', letterSpacing: 1 }}>
-              {formatTime(elapsed)}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Paused indicator */}
-          {!isRunning && period > 0 && (
-            <View style={{
-              backgroundColor: 'rgba(251,191,36,0.15)',
-              borderRadius: 8,
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderWidth: 1,
-              borderColor: '#fbbf24',
-              height: 48,
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexDirection: 'row',
-              gap: 4,
-            }}>
-              <Icon name="pause" size={14} color="#fbbf24" />
-              <Text style={{ color: '#fbbf24', fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }}>
-                PAUSADO
-              </Text>
-            </View>
-          )}
-
-          {/* Period badge */}
-          <View style={{
-            backgroundColor: period === 0 ? '#374151' : period === 1 ? '#1e3a5f' : '#1a3a2a',
-            borderRadius: 8, paddingHorizontal: 12,
-            borderWidth: 1,
-            borderColor: period === 0 ? '#4b5563' : period === 1 ? '#3b82f6' : '#22c55e',
-            height: 48, alignItems: 'center', justifyContent: 'center',
-          }}>
-            <Text style={{ color: period === 0 ? '#9ca3af' : period === 1 ? '#60a5fa' : '#4ade80', fontSize: 15, fontWeight: '800', letterSpacing: 0.5 }}>
-              {period === 1 ? '1ºT' : period === 2 ? '2ºT' : 'FIM'}
+            <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 2 }}>
+              Jogadores: {positionedPlayers.length}/5
             </Text>
           </View>
 
-          {/* Half-time / Full-time button */}
-          {period !== 0 && (
+          {/* Timer Controls */}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            {/* Play/Pause Timer */}
             <TouchableOpacity
               onPress={() => {
-                const stopAllBenchTimers = () => {
-                  if (!match) return;
-                  const minute = Math.floor(elapsed / 60);
-                  const second = elapsed % 60;
-                  Object.keys(benchStartTimestamps.current).forEach((playerId) => {
-                    benchRepo.endBenchPeriod(match.id, playerId, minute, second);
-                    delete benchStartTimestamps.current[playerId];
-                  });
-                  // Finalizar todos os períodos em quadra
-                  Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
-                    fieldRepo.endFieldPeriod(match.id, playerId, minute, second);
-                    delete fieldStartTimestamps.current[playerId];
-                  });
-                };
-                if (period === 1) {
-                  Alert.alert('Intervalo', 'Encerrar o 1º tempo?', [
-                    { text: 'Cancelar', style: 'cancel' },
-                    { text: 'Confirmar', onPress: () => { stopAllBenchTimers(); markHalfTime(); } },
-                  ]);
+                if (period === 0) {
+                  if (positionedPlayers.length === 0) {
+                    Alert.alert(
+                      'Posicione os Jogadores',
+                      'É necessário posicionar pelo menos um jogador na quadra antes de iniciar a partida.',
+                      [{ text: 'OK' }]
+                    );
+                    return;
+                  }
+                  toggleTimer();
                 } else {
-                  Alert.alert('Encerrar Partida', 'Confirmar o fim do jogo?', [
-                    { text: 'Cancelar', style: 'cancel' },
-                    { text: 'Confirmar', onPress: () => { stopAllBenchTimers(); markFullTime(); } },
-                  ]);
+                  toggleTimer();
                 }
               }}
               style={{
-                backgroundColor: period === 1 ? '#292014' : '#2a1515',
+                flexDirection: 'row', alignItems: 'center', gap: 6,
+                backgroundColor: period === 0 ? '#14532d' : isRunning ? '#92400e' : '#14532d',
                 borderWidth: 2,
-                borderColor: period === 1 ? '#f59e0b' : '#ef4444',
-                borderRadius: 12, paddingHorizontal: 14,
-                alignItems: 'center', justifyContent: 'center', gap: 3,
-                height: 48,
+                borderColor: period === 0 ? '#22c55e' : isRunning ? '#f59e0b' : '#22c55e',
+                borderRadius: 12, paddingHorizontal: 16, paddingVertical: 8,
+                minWidth: 130,
               }}
             >
               <Icon
-                name={period === 1 ? 'whistle-outline' : 'flag-checkered'}
-                size={26}
-                color={period === 1 ? '#f59e0b' : '#ef4444'}
+                name={period === 0 ? 'play-circle' : isRunning ? 'pause-circle' : 'play-circle'}
+                size={20}
+                color={period === 0 ? '#22c55e' : isRunning ? '#f59e0b' : '#22c55e'}
               />
-              <Text style={{ color: period === 1 ? '#f59e0b' : '#ef4444', fontSize: 9, fontWeight: '700', letterSpacing: 0.3 }}>
-                {period === 1 ? 'INTERVALO' : 'FIM'}
+              <Text style={{ color: '#ffffff', fontFamily: 'monospace', fontSize: 16, fontWeight: '800', letterSpacing: 0.5 }}>
+                {formatTime(elapsed)}
               </Text>
             </TouchableOpacity>
-          )}
+
+            {/* Period badge */}
+            <View style={{
+              backgroundColor: period === 0 ? '#374151' : period === 1 ? '#1e3a5f' : '#1a3a2a',
+              borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8,
+              borderWidth: 1,
+              borderColor: period === 0 ? '#4b5563' : period === 1 ? '#3b82f6' : '#22c55e',
+            }}>
+              <Text style={{ color: period === 0 ? '#9ca3af' : period === 1 ? '#60a5fa' : '#4ade80', fontSize: 13, fontWeight: '800', letterSpacing: 0.3 }}>
+                {period === 1 ? '1ºT' : period === 2 ? '2ºT' : 'FIM'}
+              </Text>
+            </View>
+
+            {/* Half-time / Full-time button */}
+            {period !== 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  const stopAllBenchTimers = () => {
+                    if (!match) return;
+                    const minute = Math.floor(elapsed / 60);
+                    const second = elapsed % 60;
+                    Object.keys(benchStartTimestamps.current).forEach((playerId) => {
+                      benchRepo.endBenchPeriod(match.id, playerId, minute, second);
+                      delete benchStartTimestamps.current[playerId];
+                    });
+                    Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
+                      fieldRepo.endFieldPeriod(match.id, playerId, minute, second);
+                      delete fieldStartTimestamps.current[playerId];
+                    });
+                  };
+                  if (period === 1) {
+                    Alert.alert('Intervalo', 'Encerrar o 1º tempo?', [
+                      { text: 'Cancelar', style: 'cancel' },
+                      { text: 'Confirmar', onPress: () => { stopAllBenchTimers(); markHalfTime(); } },
+                    ]);
+                  } else {
+                    Alert.alert('Encerrar Partida', 'Confirmar o fim do jogo?', [
+                      { text: 'Cancelar', style: 'cancel' },
+                      { text: 'Confirmar', onPress: () => { stopAllBenchTimers(); markFullTime(); } },
+                    ]);
+                  }
+                }}
+                style={{
+                  backgroundColor: period === 1 ? '#292014' : '#2a1515',
+                  borderWidth: 2,
+                  borderColor: period === 1 ? '#f59e0b' : '#ef4444',
+                  borderRadius: 10, paddingHorizontal: 10,
+                  paddingVertical: 8,
+                  alignItems: 'center', justifyContent: 'center',
+                  flexDirection: 'row',
+                  gap: 4,
+                }}
+              >
+                <Icon
+                  name={period === 1 ? 'whistle-outline' : 'flag-checkered'}
+                  size={20}
+                  color={period === 1 ? '#f59e0b' : '#ef4444'}
+                />
+                <Text style={{ color: period === 1 ? '#f59e0b' : '#ef4444', fontSize: 10, fontWeight: '700', letterSpacing: 0.3 }}>
+                  {period === 1 ? 'INTERVALO' : 'FIM'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
-        {/* Undo */}
-        <TouchableOpacity
-          onPress={() => {
-            Alert.alert('Desfazer', 'Remover o último evento?', [
-              { text: 'Cancelar', style: 'cancel' },
-              { text: 'Remover', style: 'destructive', onPress: undoLastEvent },
-            ]);
-          }}
-          style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: '#1f2937', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#374151' }}
-        >
-          <Icon name="undo" size={22} color="#9ca3af" />
-        </TouchableOpacity>
+        {/* Warnings */}
+        {period === 0 && (
+          <Text style={{ color: '#fbbf24', fontSize: 11, fontWeight: '600' }}>
+            ⚠️ Posicione os jogadores antes de iniciar
+          </Text>
+        )}
+        {selectedPlayerFromBench && (
+          <Text style={{ color: '#818cf8', fontSize: 11, marginTop: 4 }}>
+            #{selectedPlayerFromBench.player_number} - Toque em uma posição na quadra
+          </Text>
+        )}
       </View>
 
       {/* ─── Player Info Strip (visible when event panels are open) ─────────── */}
@@ -836,7 +847,16 @@ export function LiveScoutScreen() {
             onPlayerPress={handlePlayerPress}
             selectedPlayerId={live.selectedPlayerId}
             getPlayerEvents={getPlayerEvents}
-            getFieldStartTs={(playerId) => fieldStartTimestamps.current[playerId]}
+            getFieldStartTs={(playerId) => {
+              // Não contar tempo se a partida ainda não começou
+              if (period === 0) return undefined;
+              
+              // Se pausado, usar o timestamp ajustado; senão usar o real
+              if (!isRunning && fieldPausedElapsed.current[playerId] !== undefined) {
+                return Date.now() - fieldPausedElapsed.current[playerId] * 1000;
+              }
+              return fieldStartTimestamps.current[playerId];
+            }}
             isTimerRunning={isRunning}
           />
         </View>

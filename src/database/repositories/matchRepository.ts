@@ -90,3 +90,15 @@ export function updateMatchPlayerPosition(matchId: string, playerId: string, pos
     [position, matchId, playerId]
   );
 }
+
+// ─── Match Timer ─────────────────────────────────────────────────────────────
+
+export function updateMatchTimer(matchId: string, elapsedSeconds: number, isRunning: boolean, period: number): void {
+  const db = getDatabase();
+  db.runSync(
+    `UPDATE matches 
+     SET elapsed_seconds = ?, is_timer_running = ?, current_period = ? 
+     WHERE id = ?`,
+    [elapsedSeconds, isRunning ? 1 : 0, period, matchId]
+  );
+}

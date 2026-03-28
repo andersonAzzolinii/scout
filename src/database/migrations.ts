@@ -292,4 +292,26 @@ export function runMigrations(): void {
       db.execSync(`ALTER TABLE match_events ADD COLUMN period INTEGER NOT NULL DEFAULT 1;`);
     }
   } catch (e) { console.warn('Migração period:', e); }
+
+  // Migração: adicionar campos de timer na tabela matches
+  try {
+    const matchesInfo2 = db.getAllSync<{ name: string }>(`PRAGMA table_info(matches);`);
+    if (!matchesInfo2.some(c => c.name === 'elapsed_seconds')) {
+      console.log('🔄 Adicionando campos de timer na tabela matches...');
+      db.execSync(`ALTER TABLE matches ADD COLUMN elapsed_seconds INTEGER NOT NULL DEFAULT 0;`);
+      db.execSync(`ALTER TABLE matches ADD COLUMN is_timer_running INTEGER NOT NULL DEFAULT 0;`);
+      db.execSync(`ALTER TABLE matches ADD COLUMN current_period INTEGER NOT NULL DEFAULT 1;`);
+      console.log('✅ Campos de timer adicionados na tabela matches');
+    }
+  } catch (e) { console.warn('Migração timer matches:', e); }
+
+  // Migração: adicionar campo paused_elapsed_seconds na tabela field_periods
+  try {
+    const fieldPeriodsInfo = db.getAllSync<{ name: string }>(`PRAGMA table_info(field_periods);`);
+    if (!fieldPeriodsInfo.some(c => c.name === 'paused_elapsed_seconds')) {
+      console.log('🔄 Adicionando campo paused_elapsed_seconds na tabela field_periods...');
+      db.execSync(`ALTER TABLE field_periods ADD COLUMN paused_elapsed_seconds INTEGER;`);
+      console.log('✅ Campo paused_elapsed_seconds adicionado');
+    }
+  } catch (e) { console.warn('Migração paused_elapsed_seconds:', e); }
 }

@@ -64,6 +64,9 @@ export interface Match {
   date: string;
   location: string;
   is_home: boolean;
+  elapsed_seconds?: number;
+  is_timer_running?: number;
+  current_period?: number;
   created_at: string;
   // Joined fields (optional)
   team_name?: string;
@@ -119,6 +122,7 @@ export interface FieldPeriod {
   end_second: number | null;
   start_timestamp: number | null;
   end_timestamp: number | null;
+  paused_elapsed_seconds?: number | null;
   created_at: string;
 }
 
