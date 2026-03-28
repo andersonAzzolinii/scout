@@ -102,3 +102,11 @@ export function updateMatchTimer(matchId: string, elapsedSeconds: number, isRunn
     [elapsedSeconds, isRunning ? 1 : 0, period, matchId]
   );
 }
+
+export function updateMatchTotalDuration(matchId: string, totalSeconds: number): void {
+  const db = getDatabase();
+  db.runSync(
+    `UPDATE matches SET total_duration_seconds = ? WHERE id = ?`,
+    [totalSeconds, matchId]
+  );
+}

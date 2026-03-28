@@ -132,17 +132,17 @@ export function useMatchTimer() {
    * Encerrar partida
    */
   const markFullTime = useCallback(() => {
-    // Captura elapsed IMEDIATAMENTE para evitar race conditions
-    pausedElapsedRef.current = elapsed;
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
     setIsRunning(false);
+    setElapsed(0);
+    pausedElapsedRef.current = null;
     setPeriod(0);
     storePeriod(0);
-    setTimer(pausedElapsedRef.current, false);
-  }, [elapsed, setTimer, storePeriod]);
+    setTimer(0, false);
+  }, [setTimer, storePeriod]);
 
   /**
    * Reset timer

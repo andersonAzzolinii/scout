@@ -36,14 +36,31 @@ interface BenchPlayerCardProps {
   playerNumber: number | null;
   photoUri: string | null;
   benchStartTs?: number;
+  pausedElapsed?: number;
+  isTimerRunning: boolean;
   onPress: () => void;
   isSelected?: boolean;
   expanded?: boolean;
 }
 
-function BenchPlayerCard({ playerName, playerNumber, photoUri, benchStartTs, onPress, isSelected, expanded }: BenchPlayerCardProps) {
+function BenchPlayerCard({ playerName, playerNumber, photoUri, benchStartTs, pausedElapsed, isTimerRunning, onPress, isSelected, expanded }: BenchPlayerCardProps) {
   const isOnBench = !!benchStartTs;
-  const benchTime = isOnBench ? Math.floor((Date.now() - benchStartTs!) / 1000) : 0;
+  
+  // Se timer pausado e tem elapsed definido, usar o elapsed pausado; senão calcular normalmente
+  let benchTime = 0;
+  if (isOnBench) {
+    if (!isTimerRunning && pausedElapsed !== undefined) {
+      // Timer pausado - usar elapsed armazenado (congelado)
+      benchTime = pausedElapsed;
+    } else if (isTimerRunning) {
+      // Timer rodando - calcular desde timestamp
+      benchTime = Math.floor((Date.now() - benchStartTs!) / 1000);
+    } else {
+      // Timer pausado mas sem elapsed definido - manter em 0
+      benchTime = 0;
+    }
+  }
+  
   const minutes = Math.floor(benchTime / 60);
   const seconds = benchTime % 60;
 
@@ -112,12 +129,16 @@ export function LiveScoutScreen() {
   const [showSwapPanel, setShowSwapPanel] = useState(false);
   // wall-clock timestamps (ms) when each player entered the bench
   const benchStartTimestamps = useRef<Record<string, number>>({});
+  // elapsed seconds when timer was paused for each bench player
+  const benchPausedElapsed = useRef<Record<string, number>>({});
   // wall-clock timestamps (ms) when each player entered the field
   const fieldStartTimestamps = useRef<Record<string, number>>({});
   // elapsed seconds when timer was paused for each field player
   const fieldPausedElapsed = useRef<Record<string, number>>({});
   // elapsed acumulado quando mudou de período (para manter tempo contínuo)
   const fieldPeriodChangeElapsed = useRef<Record<string, number>>({});
+  // elapsed do 1º tempo para calcular duração total da partida
+  const firstHalfElapsed = useRef<number>(0);
   // tick to force re-render every second while players are on bench
   const [, setTick] = useState(0);
   // tick to force re-render when field timestamps change
@@ -157,7 +178,6 @@ export function LiveScoutScreen() {
           ? p.paused_elapsed_seconds
           : Math.floor((Date.now() - p.start_timestamp) / 1000);
         
-        console.log(`[RESTORE] Player ${p.player_id.slice(0,8)} - Timestamp: ${p.start_timestamp}, Paused Elapsed: ${p.paused_elapsed_seconds}, Calculated Elapsed: ${elapsed}s`);
         
         // Ajustar ref para refletir o elapsed correto
         fieldStartTimestamps.current[p.player_id] = Date.now() - elapsed * 1000;
@@ -289,7 +309,6 @@ export function LiveScoutScreen() {
     positionedPlayers.forEach(({ player }) => {
       if (!fieldRepo.isPlayerOnField(match.id, player.player_id)) {
         // Todos os jogadores começam do zero no novo período
-        console.log(`[PERIODO ${period}] Player ${player.player_id.slice(0,8)} - Iniciando do zero`);
         fieldStartTimestamps.current[player.player_id] = Date.now();
         fieldRepo.startFieldPeriod(match.id, player.player_id, minute, second, period);
         setFieldTick(t => t + 1);
@@ -298,44 +317,60 @@ export function LiveScoutScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, isRunning]);
 
-  // Quando o timer pausa/retoma, ajustar timestamps dos field players
+  // Quando o timer pausa/retoma, ajustar timestamps dos field players E bench players
   useEffect(() => {
     if (!match) return;
     
+    
     if (!isRunning) {
-      console.log('\n[PAUSE] Timer pausado - Armazenando elapsed...');
-      // Timer pausou: calcular elapsed e ARMAZENAR no banco (não ajustar timestamp)
+      
+      // FIELD: calcular elapsed e armazenar no banco
       Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
         const oldTimestamp = fieldStartTimestamps.current[playerId];
         const elapsed = Math.floor((Date.now() - oldTimestamp) / 1000);
         fieldPausedElapsed.current[playerId] = elapsed;
-        console.log(`[PAUSE] Player ${playerId.slice(0,8)} - Timestamp: ${oldTimestamp}, Elapsed: ${elapsed}s`);
         
-        // Congelar ref localmente (para display enquanto estiver na tela)
-        const frozenTimestamp = Date.now() - elapsed * 1000;
-        fieldStartTimestamps.current[playerId] = frozenTimestamp;
+        // NÃO ajustar timestamp aqui - manter o original e usar fieldPausedElapsed para display
         
         // Armazenar elapsed no banco (não modifica timestamp)
         fieldRepo.updateActiveFieldPausedElapsed(match.id, playerId, elapsed);
-        console.log(`[PAUSE] Player ${playerId.slice(0,8)} - DB atualizado: elapsed=${elapsed}s armazenado`);
       });
+      
+      // BENCH: calcular elapsed e armazenar
+      Object.keys(benchStartTimestamps.current).forEach((playerId) => {
+        const oldTimestamp = benchStartTimestamps.current[playerId];
+        const elapsed = Math.floor((Date.now() - oldTimestamp) / 1000);
+        benchPausedElapsed.current[playerId] = elapsed;
+        
+        // NÃO ajustar timestamp aqui - manter o original
+      });
+      
       setFieldTick(t => t + 1);
+      setTick(t => t + 1);
     } else {
-      console.log('\n[RESUME] Timer retomado - Limpando pause...');
-      // Timer retomou: ajustar timestamps para continuar de onde parou e limpar pause no banco
+      
+      // FIELD: ajustar timestamps para continuar de onde parou
       Object.keys(fieldPausedElapsed.current).forEach((playerId) => {
         const pausedElapsed = fieldPausedElapsed.current[playerId];
         const resumedTimestamp = Date.now() - pausedElapsed * 1000;
-        console.log(`[RESUME] Player ${playerId.slice(0,8)} - Resumed: ${resumedTimestamp}, Elapsed: ${pausedElapsed}s`);
         fieldStartTimestamps.current[playerId] = resumedTimestamp;
         
         // Limpar pause no banco
         fieldRepo.updateActiveFieldPausedElapsed(match.id, playerId, null);
-        console.log(`[RESUME] Player ${playerId.slice(0,8)} - DB: pause limpo`);
       });
+      
+      // BENCH: ajustar timestamps para continuar de onde parou
+      Object.keys(benchPausedElapsed.current).forEach((playerId) => {
+        const pausedElapsed = benchPausedElapsed.current[playerId];
+        const resumedTimestamp = Date.now() - pausedElapsed * 1000;
+        benchStartTimestamps.current[playerId] = resumedTimestamp;
+      });
+      
       // Limpar o registro de pause local
       fieldPausedElapsed.current = {};
+      benchPausedElapsed.current = {};
       setFieldTick(t => t + 1);
+      setTick(t => t + 1);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning]);
@@ -366,6 +401,7 @@ export function LiveScoutScreen() {
           const second = elapsed % 60;
           benchRepo.endBenchPeriod(match.id, selectedPlayerFromBench.player_id, minute, second);
           delete benchStartTimestamps.current[selectedPlayerFromBench.player_id];
+          delete benchPausedElapsed.current[selectedPlayerFromBench.player_id];
           clearBenchElapsed(selectedPlayerFromBench.player_id);
         }
       }
@@ -377,14 +413,24 @@ export function LiveScoutScreen() {
       // Save position to database
       if (match) {
         matchRepo.updateMatchPlayerPosition(match.id, selectedPlayerFromBench.player_id, position);
-            // Iniciar período em quadra apenas se o timer estiver rodando
-            if (isRunning && period > 0) {
-              const minute = Math.floor(elapsed / 60);
-              const second = elapsed % 60;
-              fieldRepo.startFieldPeriod(match.id, selectedPlayerFromBench.player_id, minute, second, period);
-              fieldStartTimestamps.current[selectedPlayerFromBench.player_id] = Date.now();
-              setFieldTick(t => t + 1);
-            }
+        // Iniciar período em quadra se a partida já começou
+        if (period > 0) {
+          const minute = Math.floor(elapsed / 60);
+          const second = elapsed % 60;
+          fieldRepo.startFieldPeriod(match.id, selectedPlayerFromBench.player_id, minute, second, period);
+          
+          // Se timer pausado, congelar; senão usar timestamp normal
+          if (!isRunning) {
+            const frozenTimestamp = Date.now();
+            fieldStartTimestamps.current[selectedPlayerFromBench.player_id] = frozenTimestamp;
+            fieldPausedElapsed.current[selectedPlayerFromBench.player_id] = 0;
+            fieldRepo.updateActiveFieldPausedElapsed(match.id, selectedPlayerFromBench.player_id, 0);
+            console.log(`[POSITION] Timer pausado - jogador posicionado CONGELADO em 0s`);
+          } else {
+            fieldStartTimestamps.current[selectedPlayerFromBench.player_id] = Date.now();
+          }
+          setFieldTick(t => t + 1);
+        }
       }
       return;
     }
@@ -405,6 +451,7 @@ export function LiveScoutScreen() {
         const second = elapsed % 60;
         benchRepo.endBenchPeriod(match.id, player.player_id, minute, second);
         delete benchStartTimestamps.current[player.player_id];
+        delete benchPausedElapsed.current[player.player_id];
         clearBenchElapsed(player.player_id);
       }
     }
@@ -415,12 +462,22 @@ export function LiveScoutScreen() {
     }]);
     // Save position to database
     matchRepo.updateMatchPlayerPosition(match.id, player.player_id, selectedPositionSlot.position);
-    // Iniciar período em quadra apenas se o timer estiver rodando
-    if (isRunning && period > 0) {
+    // Iniciar período em quadra se a partida já começou
+    if (period > 0) {
       const minute = Math.floor(elapsed / 60);
       const second = elapsed % 60;
       fieldRepo.startFieldPeriod(match.id, player.player_id, minute, second, period);
-      fieldStartTimestamps.current[player.player_id] = Date.now();
+      
+      // Se timer pausado, congelar; senão usar timestamp normal
+      if (!isRunning) {
+        const frozenTimestamp = Date.now();
+        fieldStartTimestamps.current[player.player_id] = frozenTimestamp;
+        fieldPausedElapsed.current[player.player_id] = 0;
+        fieldRepo.updateActiveFieldPausedElapsed(match.id, player.player_id, 0);
+        console.log(`[POSITION SELECT] Timer pausado - jogador posicionado CONGELADO em 0s`);
+      } else {
+        fieldStartTimestamps.current[player.player_id] = Date.now();
+      }
       setFieldTick(t => t + 1);
     }
     setSelectedPositionSlot(null);
@@ -475,14 +532,25 @@ export function LiveScoutScreen() {
     
     // Iniciar período no banco
     benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second, period);
+    
     // Registrar timestamp de wall-clock
-    benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
+    // Se timer pausado, já congelar o timestamp e marcar elapsed como 0
+    const elapsedToFreeze = 0;
+    if (!isRunning) {
+      const frozenTimestamp = Date.now() - elapsedToFreeze * 1000;
+      benchStartTimestamps.current[live.selectedPlayerId] = frozenTimestamp;
+      benchPausedElapsed.current[live.selectedPlayerId] = elapsedToFreeze;
+      console.log(`[SEND TO BENCH] Timer pausado - jogador ${live.selectedPlayerId.slice(0,8)} inicia no banco CONGELADO em ${elapsedToFreeze}s`);
+    } else {
+      benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
+    }
 
     // Finalizar período em quadra
     fieldRepo.endFieldPeriod(match.id, live.selectedPlayerId, minute, second);
     delete fieldStartTimestamps.current[live.selectedPlayerId];
     delete fieldPeriodChangeElapsed.current[live.selectedPlayerId];
     setFieldTick(t => t + 1);
+    setTick(t => t + 1);
     
     setShowEventsModal(false);
   };
@@ -502,7 +570,18 @@ export function LiveScoutScreen() {
     );
     matchRepo.updateMatchPlayerPosition(match.id, live.selectedPlayerId, null);
     benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second, period);
-    benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
+    
+    // Se timer pausado, congelar timestamp do jogador que vai para o banco
+    const elapsedToFreeze = 0;
+    if (!isRunning) {
+      // Timestamp congelado: calcula um timestamp que sempre resulta em elapsed=0
+      const frozenTimestamp = Date.now() - elapsedToFreeze * 1000;
+      benchStartTimestamps.current[live.selectedPlayerId] = frozenTimestamp;
+      benchPausedElapsed.current[live.selectedPlayerId] = elapsedToFreeze;
+    } else {
+      benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
+    }
+    
     // Finalizar período em quadra do jogador que sai
     fieldRepo.endFieldPeriod(match.id, live.selectedPlayerId, minute, second);
     delete fieldStartTimestamps.current[live.selectedPlayerId];
@@ -514,12 +593,35 @@ export function LiveScoutScreen() {
     if (isOnBench) {
       benchRepo.endBenchPeriod(match.id, incomingPlayer.player_id, minute, second);
       delete benchStartTimestamps.current[incomingPlayer.player_id];
+      delete benchPausedElapsed.current[incomingPlayer.player_id];
       clearBenchElapsed(incomingPlayer.player_id);
     }
+    
     // Iniciar período em quadra do jogador que entra
     fieldRepo.startFieldPeriod(match.id, incomingPlayer.player_id, minute, second, period);
-    fieldStartTimestamps.current[incomingPlayer.player_id] = Date.now();
+    
+    // Se timer pausado, congelar timestamp do jogador que entra em quadra
+    const fieldElapsedToFreeze = 0;
+    if (!isRunning) {
+      const frozenTimestamp = Date.now() - fieldElapsedToFreeze * 1000;
+      fieldStartTimestamps.current[incomingPlayer.player_id] = frozenTimestamp;
+      fieldPausedElapsed.current[incomingPlayer.player_id] = fieldElapsedToFreeze;
+      // Armazenar no BD também
+      fieldRepo.updateActiveFieldPausedElapsed(match.id, incomingPlayer.player_id, fieldElapsedToFreeze);
+      console.log(`[SWAP] Timer pausado - jogador ${incomingPlayer.player_id.slice(0,8)} entra em quadra CONGELADO em ${fieldElapsedToFreeze}s`);
+    } else {
+      fieldStartTimestamps.current[incomingPlayer.player_id] = Date.now();
+    }
+    
     setFieldTick(t => t + 1);
+    setTick(t => t + 1);
+    
+    console.log('[SWAP] Estado final após swap:');
+    console.log('  - benchStartTimestamps:', benchStartTimestamps.current);
+    console.log('  - benchPausedElapsed:', benchPausedElapsed.current);
+    console.log('  - fieldStartTimestamps:', fieldStartTimestamps.current);
+    console.log('  - fieldPausedElapsed:', fieldPausedElapsed.current);
+    console.log('  - isRunning:', isRunning);
 
     const newPositions = outgoingPosition != null
       ? [...updatedPositions, { player: incomingPlayer, position: outgoingPosition }]
@@ -688,6 +790,7 @@ export function LiveScoutScreen() {
                           Object.keys(benchStartTimestamps.current).forEach((playerId) => {
                             benchRepo.endBenchPeriod(match.id, playerId, minute, second);
                             delete benchStartTimestamps.current[playerId];
+                            delete benchPausedElapsed.current[playerId];
                           });
                           
                           // Encerrar períodos em quadra - 2º tempo começará do zero
@@ -697,6 +800,7 @@ export function LiveScoutScreen() {
                             delete fieldStartTimestamps.current[playerId];
                           });
                           
+                          firstHalfElapsed.current = elapsed;
                           markHalfTime();
                         } 
                       },
@@ -715,6 +819,7 @@ export function LiveScoutScreen() {
                           Object.keys(benchStartTimestamps.current).forEach((playerId) => {
                             benchRepo.endBenchPeriod(match.id, playerId, minute, second);
                             delete benchStartTimestamps.current[playerId];
+                            delete benchPausedElapsed.current[playerId];
                           });
                           // Encerrar períodos em quadra
                           Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
@@ -723,6 +828,8 @@ export function LiveScoutScreen() {
                             delete fieldPeriodChangeElapsed.current[playerId];
                           });
                           markFullTime();
+                          const totalDuration = firstHalfElapsed.current + elapsed;
+                          matchRepo.updateMatchTotalDuration(match.id, totalDuration);
                         } 
                       },
                     ]);
@@ -824,6 +931,8 @@ export function LiveScoutScreen() {
                   playerNumber={player.player_number ?? null}
                   photoUri={player.photo_uri ?? null}
                   benchStartTs={benchStartTimestamps.current[player.player_id]}
+                  pausedElapsed={benchPausedElapsed.current[player.player_id]}
+                  isTimerRunning={isRunning}
                   onPress={() => handleBenchPlayerClick(player)}
                   isSelected={selectedPlayerFromBench?.player_id === player.player_id}
                   expanded={true}
@@ -967,6 +1076,8 @@ export function LiveScoutScreen() {
                     playerNumber={player.player_number ?? null}
                     photoUri={player.photo_uri ?? null}
                     benchStartTs={benchStartTimestamps.current[player.player_id]}
+                    pausedElapsed={benchPausedElapsed.current[player.player_id]}
+                    isTimerRunning={isRunning}
                     onPress={() => handlePlayerSelect(player)}
                   />
                 ))}
@@ -1029,12 +1140,9 @@ export function LiveScoutScreen() {
             );
           })()}
           {/* Field history */}
-          {fieldPeriods.length > 0 && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingTop: 10, alignItems: 'center' }}>
-              <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 2 }}>Quadra:</Text>
-              {(() => {
-                let totalSec = 0;
-                const chips = fieldPeriods.map((p, idx) => {
+          {fieldPeriods.length > 0 && (() => {
+            let totalSec = 0;
+            const chips = [...fieldPeriods].sort((a, b) => a.period - b.period).map((p, idx) => {
                   const isActive = p.end_minute === null;
                   
                   // Calcular duração respeitando pausas
@@ -1042,11 +1150,11 @@ export function LiveScoutScreen() {
                   if (isActive) {
                     // Período ativo
                     if (p.paused_elapsed_seconds !== null && p.paused_elapsed_seconds !== undefined) {
-                      // Timer está pausado - usar elapsed armazenado
+                      // Timer está pausado - usar elapsed armazenado no banco
                       durSec = p.paused_elapsed_seconds;
-                    } else if (p.start_timestamp) {
-                      // Timer rodando - calcular desde timestamp
-                      durSec = Math.floor((Date.now() - p.start_timestamp) / 1000);
+                    } else if (selPlayer && fieldStartTimestamps.current[selPlayer.player_id]) {
+                      // Timer rodando - usar ref ajustado (já corrigido para excluir tempo pausado)
+                      durSec = Math.floor((Date.now() - fieldStartTimestamps.current[selPlayer.player_id]) / 1000);
                     }
                   } else {
                     // Período finalizado
@@ -1078,32 +1186,36 @@ export function LiveScoutScreen() {
                     </View>
                   );
                 });
-                return (
-                  <>
-                    {chips}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(21,128,61,0.12)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#15803d' }}>
-                      <Icon name="sigma" size={11} color="#4ade80" />
-                      <Text style={{ color: '#4ade80', fontSize: 10, fontFamily: 'monospace', fontWeight: '800' }}>{fmt(totalSec)}</Text>
-                    </View>
-                  </>
-                );
-              })()}
-            </View>
-          )}
+            return (
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10 }}>
+                <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 6 }}>Quadra:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6, alignItems: 'center', flexDirection: 'row' }}>
+                  {chips}
+                </ScrollView>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(21,128,61,0.12)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#15803d', marginLeft: 6 }}>
+                  <Icon name="sigma" size={11} color="#4ade80" />
+                  <Text style={{ color: '#4ade80', fontSize: 10, fontFamily: 'monospace', fontWeight: '800' }}>{fmt(totalSec)}</Text>
+                </View>
+              </View>
+            );
+          })()}
           {/* Bench history */}
-          {benchPeriods.length > 0 && (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 12, paddingTop: 10, alignItems: 'center' }}>
-              <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 2 }}>Banco:</Text>
-              {(() => {
-                let totalSec = 0;
-                const chips = benchPeriods.map((p, idx) => {
+          {benchPeriods.length > 0 && (() => {
+            let totalSec = 0;
+            const chips = [...benchPeriods].sort((a, b) => a.period - b.period).map((p, idx) => {
                   const isActive = p.end_minute === null;
                   
                   // Calcular duração
                   let durSec = 0;
                   if (isActive) {
-                    // Período ativo
-                    if (p.start_timestamp) {
+                    // Período ativo no banco
+                    if (selPlayer && benchPausedElapsed.current[selPlayer.player_id] !== undefined) {
+                      // Timer pausado - usar ref de elapsed pausado
+                      durSec = benchPausedElapsed.current[selPlayer.player_id];
+                    } else if (selPlayer && benchStartTimestamps.current[selPlayer.player_id]) {
+                      // Timer rodando - usar ref ajustado (já corrigido para excluir tempo pausado)
+                      durSec = Math.floor((Date.now() - benchStartTimestamps.current[selPlayer.player_id]) / 1000);
+                    } else if (p.start_timestamp) {
                       durSec = Math.floor((Date.now() - p.start_timestamp) / 1000);
                     }
                   } else {
@@ -1136,18 +1248,19 @@ export function LiveScoutScreen() {
                     </View>
                   );
                 });
-                return (
-                  <>
-                    {chips}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(99,102,241,0.12)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#6366f1' }}>
-                      <Icon name="sigma" size={11} color="#818cf8" />
-                      <Text style={{ color: '#818cf8', fontSize: 10, fontFamily: 'monospace', fontWeight: '800' }}>{fmt(totalSec)}</Text>
-                    </View>
-                  </>
-                );
-              })()}
-            </View>
-          )}
+            return (
+              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10 }}>
+                <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 6 }}>Banco:</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6, alignItems: 'center', flexDirection: 'row' }}>
+                  {chips}
+                </ScrollView>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(99,102,241,0.12)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#6366f1', marginLeft: 6 }}>
+                  <Icon name="sigma" size={11} color="#818cf8" />
+                  <Text style={{ color: '#818cf8', fontSize: 10, fontFamily: 'monospace', fontWeight: '800' }}>{fmt(totalSec)}</Text>
+                </View>
+              </View>
+            );
+          })()}
           {/* Action buttons */}
           <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 12, paddingTop: 10, paddingBottom: insets.bottom + 10 }}>
           <TouchableOpacity
@@ -1192,16 +1305,22 @@ export function LiveScoutScreen() {
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {benchPlayers.map(player => (
-                    <BenchPlayerCard
-                      key={player.player_id}
-                      playerName={player.player_name ?? null}
-                      playerNumber={player.player_number ?? null}
-                      photoUri={player.photo_uri ?? null}
-                      benchStartTs={benchStartTimestamps.current[player.player_id]}
-                      onPress={() => handleSwapPlayer(player)}
-                    />
-                  ))}
+                  {benchPlayers.map(player => {
+                    const benchTs = benchStartTimestamps.current[player.player_id];
+                    const pausedEl = benchPausedElapsed.current[player.player_id];
+                    return (
+                      <BenchPlayerCard
+                        key={player.player_id}
+                        playerName={player.player_name ?? null}
+                        playerNumber={player.player_number ?? null}
+                        photoUri={player.photo_uri ?? null}
+                        benchStartTs={benchTs}
+                        pausedElapsed={pausedEl}
+                        isTimerRunning={isRunning}
+                        onPress={() => handleSwapPlayer(player)}
+                      />
+                    );
+                  })}
                 </View>
               </ScrollView>
             )}

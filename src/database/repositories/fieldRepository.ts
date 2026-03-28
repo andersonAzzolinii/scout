@@ -46,11 +46,26 @@ export function endFieldPeriod(
   second: number
 ): void {
   const db = getDatabase();
+  
+  // Buscar o período ativo para verificar se há elapsed pausado
+  const activePeriod = db.getFirstSync<{ start_timestamp: number; paused_elapsed_seconds: number | null }>(
+    `SELECT start_timestamp, paused_elapsed_seconds FROM field_periods
+     WHERE match_id = ? AND player_id = ? AND end_minute IS NULL`,
+    [matchId, playerId]
+  );
+  
+  // Calcular end_timestamp correto
+  let endTimestamp = Date.now();
+  if (activePeriod && activePeriod.paused_elapsed_seconds !== null) {
+    // Timer pausado - usar elapsed pausado para calcular end correto
+    endTimestamp = activePeriod.start_timestamp + activePeriod.paused_elapsed_seconds * 1000;
+  }
+  
   db.runSync(
     `UPDATE field_periods
      SET end_minute = ?, end_second = ?, end_timestamp = ?
      WHERE match_id = ? AND player_id = ? AND end_minute IS NULL`,
-    [minute, second, Date.now(), matchId, playerId]
+    [minute, second, endTimestamp, matchId, playerId]
   );
 }
 

@@ -334,4 +334,14 @@ export function runMigrations(): void {
       console.log('✅ Campo period adicionado em bench_periods');
     }
   } catch (e) { console.warn('Migração period bench_periods:', e); }
+
+  // Migração: adicionar total_duration_seconds na tabela matches
+  try {
+    const matchesInfo3 = db.getAllSync<{ name: string }>(`PRAGMA table_info(matches);`);
+    if (!matchesInfo3.some(c => c.name === 'total_duration_seconds')) {
+      console.log('🔄 Adicionando campo total_duration_seconds na tabela matches...');
+      db.execSync(`ALTER TABLE matches ADD COLUMN total_duration_seconds INTEGER;`);
+      console.log('✅ Campo total_duration_seconds adicionado');
+    }
+  } catch (e) { console.warn('Migração total_duration_seconds:', e); }
 }
