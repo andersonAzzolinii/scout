@@ -13,10 +13,11 @@ interface Props {
   onDelete: () => void;
   onDrag?: () => void;
   onResize?: () => void;
+  onResizeWidth?: () => void;
   isDragging?: boolean;
 }
 
-export function CustomWidgetCard({ widget, data, kpiData, onEdit, onDelete, onDrag, onResize, isDragging }: Props) {
+export function CustomWidgetCard({ widget, data, kpiData, onEdit, onDelete, onDrag, onResize, onResizeWidth, isDragging }: Props) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const screenWidth = Dimensions.get('window').width;
@@ -30,11 +31,12 @@ export function CustomWidgetCard({ widget, data, kpiData, onEdit, onDelete, onDr
   };
 
   const chartHeight = widget.height === 'small' ? 160 : widget.height === 'large' ? 340 : 220;
+  const kpiPadding = widget.height === 'small' ? 16 : widget.height === 'large' ? 48 : 28;
 
   const renderChart = () => {
     if (widget.type === 'kpi') {
       return (
-        <View style={{ alignItems: 'center', paddingVertical: 28, paddingHorizontal: 16 }}>
+        <View style={{ alignItems: 'center', paddingVertical: kpiPadding, paddingHorizontal: 16 }}>
           {kpiData ? (
             <>
               <Text style={{ fontSize: 44 }}>{kpiData.eventIcon}</Text>
@@ -75,7 +77,7 @@ export function CustomWidgetCard({ widget, data, kpiData, onEdit, onDelete, onDr
         <DashboardBarChart
           title=""
           data={chartData}
-          height={220}
+          height={chartHeight}
           showLegend={widget.showLegend}
         />
       );
@@ -116,7 +118,7 @@ export function CustomWidgetCard({ widget, data, kpiData, onEdit, onDelete, onDr
         <DashboardPieChart
           title=""
           data={aggregatedData}
-          height={220}
+          height={chartHeight}
         />
       );
     }
@@ -136,6 +138,13 @@ export function CustomWidgetCard({ widget, data, kpiData, onEdit, onDelete, onDr
         )}
         <Text style={[styles.title, { color: colors.text }]}>{widget.title}</Text>
         <View style={styles.actions}>
+          {onResizeWidth && (
+            <Pressable onPress={onResizeWidth} style={styles.actionButton}>
+              <Text style={{ fontSize: 16, color: colors.textSecondary }}>
+                {widget.width === 'third' ? '⬌' : widget.width === 'half' ? '⬌⬌' : '⬌⬌⬌'}
+              </Text>
+            </Pressable>
+          )}
           {onResize && (
             <Pressable onPress={onResize} style={styles.actionButton}>
               <Text style={{ fontSize: 16, color: colors.textSecondary }}>

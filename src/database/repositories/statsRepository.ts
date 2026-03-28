@@ -1051,6 +1051,7 @@ function initCustomWidgetsTable(db: any): void {
   try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN only_positive INTEGER`); } catch {}
   try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN only_negative INTEGER`); } catch {}
   try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN widget_height TEXT`); } catch {}
+  try { db.execSync(`ALTER TABLE custom_widgets ADD COLUMN widget_width TEXT`); } catch {}
 }
 
 export function saveCustomWidget(widget: import('@/types/dashboard.types').CustomWidget): void {
@@ -1062,8 +1063,8 @@ export function saveCustomWidget(widget: import('@/types/dashboard.types').Custo
      (id, title, type, selected_event_ids, comparison_mode, compared_entity_ids, show_values, show_legend, created_at,
       kpi_event_id, kpi_calc_mode, sort_order,
       group_by, aggregation, filter_team_id, filter_player_id, filter_match_id, filter_category_id, filter_event_id,
-      only_positive, only_negative, widget_height)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      only_positive, only_negative, widget_height, widget_width)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       widget.id, widget.title, widget.type,
       JSON.stringify(widget.selectedEventIds),
@@ -1076,7 +1077,7 @@ export function saveCustomWidget(widget: import('@/types/dashboard.types').Custo
       widget.filterTeamId ?? null, widget.filterPlayerId ?? null, widget.filterMatchId ?? null,
       widget.filterCategoryId ?? null, widget.filterEventId ?? null,
       widget.onlyPositive ? 1 : 0, widget.onlyNegative ? 1 : 0,
-      widget.height ?? null,
+      widget.height ?? null, widget.width ?? null,
     ]
   );
 }
@@ -1110,6 +1111,7 @@ export function getCustomWidgets(): import('@/types/dashboard.types').CustomWidg
       onlyPositive: row.only_positive === 1,
       onlyNegative: row.only_negative === 1,
       height: row.widget_height ?? undefined,
+      width: row.widget_width ?? 'full',
     }));
   } catch {
     return [];

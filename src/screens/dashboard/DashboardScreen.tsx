@@ -78,6 +78,13 @@ export function DashboardScreen() {
     addWidget({ ...widget, height: next });
   };
 
+  const handleResizeWidthWidget = (widget: CustomWidget) => {
+    const widths: Array<'third' | 'half' | 'full'> = ['third', 'half', 'full'];
+    const current = widget.width || 'full';
+    const next = widths[(widths.indexOf(current) + 1) % widths.length];
+    addWidget({ ...widget, width: next });
+  };
+
   const renderWidget = ({ item, drag, isActive }: RenderItemParams<CustomWidget>) => (
     <ScaleDecorator>
       <CustomWidgetCard

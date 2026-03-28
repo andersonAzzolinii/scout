@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,11 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onSave: (selectedEvents: Array<{ categoryId: string; categoryName: string; event: EventDefinition }>) => void;
+  onRemove?: (eventNames: string[]) => void; // Callback para remover eventos desmarcados
+  existingEventNames?: string[]; // Nomes dos eventos já cadastrados no perfil
 }
 
-export function EventCatalogModal({ visible, onClose, onSave }: Props) {
+export function EventCatalogModal({ visible, onClose, onSave, onRemove, existingEventNames = [] }: Props) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
 
@@ -32,6 +34,21 @@ export function EventCatalogModal({ visible, onClose, onSave }: Props) {
 
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [selectedEvents, setSelectedEvents] = useState<Set<string>>(new Set());
+
+  // Inicializar eventos já existentes quando o modal abrir
+  useEffect(() => {
+    if (visible) {
+      const existingSet = new Set<string>();
+      EVENT_CATEGORIES.forEach(category => {
+        category.events.forEach(event => {
+          if (existingEventNames.includes(event.name)) {
+            existingSet.add(event.id);
+          }
+        });
+      });
+      setSelectedEvents(existingSet);
+    }
+  }, [visible, existingEventNames]);
 
   const toggleCategory = (categoryId: string) => {
     setExpandedCategories(prev =>
@@ -72,27 +89,63 @@ export function EventCatalogModal({ visible, onClose, onSave }: Props) {
   };
 
   const handleSave = () => {
-    const result: Array<{ categoryId: string; categoryName: string; event: EventDefinition }> = [];
+    const toAdd: Array<{ categoryId: string; categoryName: string; event: EventDefinition }> = [];
+    const toRemove: string[] = [];
     
     EVENT_CATEGORIES.forEach(category => {
       category.events.forEach(event => {
-        if (selectedEvents.has(event.id)) {
-          result.push({ categoryId: category.id, categoryName: category.name, event });
+        const isSelected = selectedEvents.has(event.id);
+        const wasExisting = existingEventNames.includes(event.name);
+        
+        // Adicionar: evento selecionado que não existia antes
+        if (isSelected && !wasExisting) {
+          toAdd.push({ categoryId: category.id, categoryName: category.name, event });
+        }
+        
+        // Remover: evento que existia mas foi desmarcado
+        if (!isSelected && wasExisting) {
+          toRemove.push(event.name);
         }
       });
     });
 
-    onSave(result);
-    setSelectedEvents(new Set());
+    // Executar adições
+    if (toAdd.length > 0) {
+      onSave(toAdd);
+    }
+    
+    // Executar remoções
+    if (toRemove.length > 0 && onRemove) {
+      onRemove(toRemove);
+    }
+    
     setExpandedCategories([]);
     onClose();
   };
 
   const handleCancel = () => {
-    setSelectedEvents(new Set());
     setExpandedCategories([]);
     onClose();
   };
+
+  // Calcular quantos eventos novos serão adicionados (não incluindo já existentes)
+  const newEventsCount = Array.from(selectedEvents).filter(eventId => {
+    const event = EVENT_CATEGORIES.flatMap(c => c.events).find(e => e.id === eventId);
+    return event && !existingEventNames.includes(event.name);
+  }).length;
+
+  const existingSelectedCount = Array.from(selectedEvents).filter(eventId => {
+    const event = EVENT_CATEGORIES.flatMap(c => c.events).find(e => e.id === eventId);
+    return event && existingEventNames.includes(event.name);
+  }).length;
+
+  // Calcular quantos eventos existentes foram desmarcados (serão removidos)
+  const toRemoveCount = existingEventNames.filter(eventName => {
+    const event = EVENT_CATEGORIES.flatMap(c => c.events).find(e => e.name === eventName);
+    return event && !selectedEvents.has(event.id);
+  }).length;
+
+  const hasChanges = newEventsCount > 0 || toRemoveCount > 0;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={handleCancel}>
@@ -114,7 +167,22 @@ export function EventCatalogModal({ visible, onClose, onSave }: Props) {
         <View style={[styles.counterBar, { backgroundColor: colors.card, borderBottomColor: colors.border }]}>
           <Icon name="check-circle" size={20} color={colors.primary} />
           <Text style={[styles.counterText, { color: colors.text }]}>
-            {selectedEvents.size} evento(s) selecionado(s)
+            {selectedEvents.size} selecionado(s)
+            {existingSelectedCount > 0 && (
+              <Text style={{ color: colors.textSecondary }}>
+                {' '}• {existingSelectedCount} já adicionado(s)
+              </Text>
+            )}
+            {newEventsCount > 0 && (
+              <Text style={{ color: '#10b981', fontWeight: '600' }}>
+                {' '}• {newEventsCount} novo(s)
+              </Text>
+            )}
+            {toRemoveCount > 0 && (
+              <Text style={{ color: '#ef4444', fontWeight: '600' }}>
+                {' '}• {toRemoveCount} a remover
+              </Text>
+            )}
           </Text>
         </View>
 
@@ -142,13 +210,23 @@ export function EventCatalogModal({ visible, onClose, onSave }: Props) {
                   ]}
                 >
                   <View style={styles.categoryHeaderLeft}>
-                    <Text style={styles.categoryIcon}>{category.icon}</Text>
                     <Text style={[styles.categoryName, { color: colors.text }]}>
                       {category.name}
                     </Text>
-                    <Text style={[styles.categoryCount, { color: colors.textSecondary }]}>
-                      ({selectedInCategory}/{eventsInCategory})
-                    </Text>
+                    <View style={[
+                      styles.categoryBadge, 
+                      { 
+                        backgroundColor: selectedInCategory > 0 ? `${colors.primary}20` : colors.border,
+                        borderColor: selectedInCategory > 0 ? colors.primary : 'transparent',
+                      }
+                    ]}>
+                      <Text style={[
+                        styles.categoryBadgeText, 
+                        { color: selectedInCategory > 0 ? colors.primary : colors.textSecondary }
+                      ]}>
+                        {selectedInCategory}/{eventsInCategory}
+                      </Text>
+                    </View>
                   </View>
 
                   <View style={styles.categoryHeaderRight}>
@@ -213,9 +291,16 @@ export function EventCatalogModal({ visible, onClose, onSave }: Props) {
                             >
                               <Text style={styles.sentimentText}>{event.sentiment}</Text>
                             </View>
-                            <Text style={[styles.eventName, { color: colors.text }]}>
-                              {event.name}
-                            </Text>
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.eventName, { color: colors.text }]}>
+                                {event.name}
+                              </Text>
+                              {existingEventNames.includes(event.name) && (
+                                <Text style={[styles.alreadyAddedText, { color: colors.textSecondary }]}>
+                                  Já adicionado
+                                </Text>
+                              )}
+                            </View>
                           </View>
 
                           {isSelected && (
@@ -242,16 +327,19 @@ export function EventCatalogModal({ visible, onClose, onSave }: Props) {
           </Pressable>
           <Pressable
             onPress={handleSave}
-            disabled={selectedEvents.size === 0}
+            disabled={!hasChanges}
             style={[
               styles.footerButton,
               {
-                backgroundColor: selectedEvents.size === 0 ? colors.border : colors.primary,
+                backgroundColor: !hasChanges ? colors.border : colors.primary,
               },
             ]}
           >
             <Text style={[styles.footerButtonText, { color: '#fff' }]}>
-              Adicionar {selectedEvents.size > 0 ? `(${selectedEvents.size})` : ''}
+              {!hasChanges 
+                ? 'Nenhuma alteração' 
+                : `Salvar (${newEventsCount > 0 ? `+${newEventsCount}` : ''}${newEventsCount > 0 && toRemoveCount > 0 ? ' ' : ''}${toRemoveCount > 0 ? `-${toRemoveCount}` : ''})`
+              }
             </Text>
           </Pressable>
         </View>
@@ -324,15 +412,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  categoryIcon: {
-    fontSize: 20,
-  },
   categoryName: {
     fontSize: 15,
     fontWeight: '600',
   },
-  categoryCount: {
-    fontSize: 13,
+  categoryBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  categoryBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   selectAllBtn: {
     paddingHorizontal: 10,
@@ -381,7 +473,11 @@ const styles = StyleSheet.create({
   },
   eventName: {
     fontSize: 14,
-    flex: 1,
+  },
+  alreadyAddedText: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginTop: 2,
   },
   footer: {
     flexDirection: 'row',

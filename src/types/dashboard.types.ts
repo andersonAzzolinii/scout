@@ -219,6 +219,7 @@ export interface CustomWidget {
 
   // Layout
   height?: 'small' | 'medium' | 'large';
+  width?: 'third' | 'half' | 'full';
   order?: number;
 
   // Metadata

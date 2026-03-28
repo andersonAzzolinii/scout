@@ -33,6 +33,14 @@ export function updateProfile(id: string, name: string): void {
 
 export function deleteProfile(id: string): void {
   const db = getDatabase();
+  // Primeiro, deletar todos os eventos das categorias do perfil
+  db.runSync(
+    `DELETE FROM scout_events WHERE category_id IN (SELECT id FROM scout_categories WHERE profile_id = ?)`,
+    [id]
+  );
+  // Depois, deletar todas as categorias do perfil
+  db.runSync(`DELETE FROM scout_categories WHERE profile_id = ?`, [id]);
+  // Por último, deletar o perfil
   db.runSync(`DELETE FROM scout_profiles WHERE id = ?`, [id]);
 }
 
@@ -64,6 +72,9 @@ export function updateCategory(id: string, name: string, orderIndex: number): vo
 
 export function deleteCategory(id: string): void {
   const db = getDatabase();
+  // Primeiro, deletar todos os eventos da categoria
+  db.runSync(`DELETE FROM scout_events WHERE category_id = ?`, [id]);
+  // Depois, deletar a categoria
   db.runSync(`DELETE FROM scout_categories WHERE id = ?`, [id]);
 }
 

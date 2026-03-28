@@ -30,12 +30,10 @@ export function ProfileDetailScreen() {
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const { profileId } = route.params;
-  const { profiles, categories, events, loadCategories, loadEventsByProfile, createCategory, deleteCategory, createEvent } = useProfileStore();
+  const { profiles, categories, events, loadCategories, loadEventsByProfile, createCategory, deleteCategory, createEvent, deleteEvent } = useProfileStore();
 
   const profile = profiles.find((p) => p.id === profileId);
 
-  const [showCatModal, setShowCatModal] = useState(false);
-  const [newCatName, setNewCatName] = useState('');
   const [showCatalog, setShowCatalog] = useState(false);
 
   useEffect(() => {
@@ -43,17 +41,7 @@ export function ProfileDetailScreen() {
     loadEventsByProfile(profileId);
   }, [profileId]);
 
-  const handleAddCategory = () => {
-    if (!newCatName.trim()) return;
-    createCategory({
-      id: generateId(),
-      profile_id: profileId,
-      name: newCatName.trim(),
-      order_index: categories.length,
-    });
-    setNewCatName('');
-    setShowCatModal(false);
-  };
+
 
   const handleAddFromCatalog = (selectedEvents: Array<{ categoryId: string; categoryName: string; event: EventDefinition }>) => {
     // Agrupar eventos por categoria
@@ -102,6 +90,38 @@ export function ProfileDetailScreen() {
     }, 100);
   };
 
+  const handleRemoveFromCatalog = (eventNames: string[]) => {
+    // Encontrar e remover eventos pelos nomes
+    const categoriesToCheck = new Set<string>();
+    
+    eventNames.forEach(eventName => {
+      const eventToRemove = events.find(e => e.name === eventName);
+      if (eventToRemove) {
+        categoriesToCheck.add(eventToRemove.category_id);
+        deleteEvent(eventToRemove.id);
+      }
+    });
+
+    // Verificar e remover categorias que ficaram vazias
+    setTimeout(() => {
+      loadCategories(profileId);
+      loadEventsByProfile(profileId);
+      
+      // Verificar categorias vazias após recarregar
+      setTimeout(() => {
+        categoriesToCheck.forEach(categoryId => {
+          const remainingEvents = events.filter(e => e.category_id === categoryId);
+          if (remainingEvents.length === 0) {
+            deleteCategory(categoryId);
+          }
+        });
+        
+        // Recarregar novamente se houver categorias removidas
+        loadCategories(profileId);
+      }, 50);
+    }, 100);
+  };
+
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Header
@@ -120,34 +140,10 @@ export function ProfileDetailScreen() {
               Adicionar do Catálogo
             </Text>
           </TouchableOpacity>
-          
-          <TouchableOpacity
-            onPress={() => setShowCatModal(true)}
-            className="bg-amber-500 rounded-xl p-4 flex-row items-center justify-center gap-2"
-            style={{ minWidth: 100 }}
-          >
-            <Icon name="folder-plus" size={20} color="#fff" />
-            <Text className="text-white font-semibold text-base">
-              Nova Categoria
-            </Text>
-          </TouchableOpacity>
         </View>
 
         {/* Info Card */}
-        <Card className="mb-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-          <View className="flex-row items-start gap-3">
-            <Icon name="information" size={24} color="#3b82f6" />
-            <View className="flex-1">
-              <Text className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-1">
-                Como funciona?
-              </Text>
-              <Text className="text-xs text-blue-700 dark:text-blue-300">
-                Use o catálogo para adicionar eventos pré-definidos do sistema, ou crie suas próprias categorias e eventos personalizados.
-              </Text>
-            </View>
-          </View>
-        </Card>
-
+       
         {/* Categories List */}
         {categories.length === 0 ? (
           <Card>
@@ -229,32 +225,13 @@ export function ProfileDetailScreen() {
         <View className="h-10" />
       </ScrollView>
 
-      {/* Add Category Modal */}
-      <Modal visible={showCatModal} transparent animationType="fade">
-        <View className="flex-1 bg-black/60 items-center justify-center px-6">
-          <View className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full">
-            <Text className="text-lg font-bold text-gray-900 dark:text-white mb-4">Nova Categoria</Text>
-            <TextInput
-              className="bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 text-base mb-4"
-              placeholder="Ex: Ataque, Defesa, Posse de bola..."
-              placeholderTextColor="#6b7280"
-              value={newCatName}
-              onChangeText={setNewCatName}
-              autoFocus
-            />
-            <View className="flex-row gap-3">
-              <Button title="Cancelar" variant="ghost" onPress={() => setShowCatModal(false)} className="flex-1" />
-              <Button title="Salvar" onPress={handleAddCategory} className="flex-1" />
-            </View>
-          </View>
-        </View>
-      </Modal>
-
       {/* Event Catalog Modal */}
       <EventCatalogModal
         visible={showCatalog}
         onClose={() => setShowCatalog(false)}
         onSave={handleAddFromCatalog}
+        onRemove={handleRemoveFromCatalog}
+        existingEventNames={events.map(e => e.name)}
       />
     </View>
   );

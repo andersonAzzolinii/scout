@@ -46,7 +46,15 @@ export const useProfileStore = create<ProfileStore>((set) => ({
   deleteProfile: (id) => {
     profileRepo.deleteProfile(id);
     const profiles = profileRepo.getProfiles();
-    set({ profiles });
+    set((state) => ({ 
+      profiles,
+      // Limpar categorias e eventos do perfil excluído
+      categories: state.categories.filter((c) => c.profile_id !== id),
+      events: state.events.filter((e) => {
+        const category = state.categories.find((c) => c.id === e.category_id);
+        return category?.profile_id !== id;
+      })
+    }));
   },
 
   loadCategories: (profileId) => {
@@ -68,7 +76,10 @@ export const useProfileStore = create<ProfileStore>((set) => ({
   },
   deleteCategory: (id) => {
     profileRepo.deleteCategory(id);
-    set((state) => ({ categories: state.categories.filter((c) => c.id !== id) }));
+    set((state) => ({ 
+      categories: state.categories.filter((c) => c.id !== id),
+      events: state.events.filter((e) => e.category_id !== id) // Remover eventos da categoria também
+    }));
   },
 
   loadEvents: (categoryId) => {
