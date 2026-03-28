@@ -82,6 +82,7 @@ export const EVENT_CATEGORIES: EventCategory[] = [
     icon: '🛡️',
     events: [
       { id: 'desarme_com_posse', name: 'Desarme com posse', sentiment: '+' },
+      { id: 'desarme_sem_posse', name: 'Desarme sem posse', sentiment: '-' },
       { id: 'interceptacao', name: 'Interceptação', sentiment: '+' },
       { id: 'bloqueio_chute', name: 'Bloqueio de chute', sentiment: '+' },
       { id: 'bloqueio_passe', name: 'Bloqueio de passe', sentiment: '+' },
@@ -328,9 +329,10 @@ export const EVENT_METRIC_GROUPS: EventMetricGroup[] = [
     name: 'Ações Defensivas',
     categoryId: 'defesa',
     eventIds: [
-      'desarme_com_posse', 'interceptacao', 'bloqueio_chute', 'bloqueio_passe',
+      'desarme_com_posse', 'desarme_sem_posse', 'interceptacao', 'bloqueio_chute', 'bloqueio_passe',
       'corte', 'rebatida', 'recuperacao_bola', 'roubada_ataque',
     ],
+    successIds: ['desarme_com_posse', 'interceptacao', 'bloqueio_chute', 'bloqueio_passe', 'corte', 'rebatida', 'recuperacao_bola', 'roubada_ataque'],
   },
   {
     id: 'erros_defensivos',
@@ -559,7 +561,7 @@ export const SUMMARY_TOTALIZERS: SummaryTotalizer[] = [
     id: 'total_finalizacoes',
     name: 'Finalizações',
     eventIds: [
-      'finalizacao_no_gol', 'finalizacao_fora', 'finalizacao_bloqueada',      
+      'finalizacao_no_gol', 'finalizacao_fora', 'finalizacao_bloqueada',
     ],
     successIds: [
       'finalizacao_no_gol',

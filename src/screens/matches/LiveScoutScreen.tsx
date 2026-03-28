@@ -234,7 +234,8 @@ export function LiveScoutScreen() {
   );
 
   // Filtrar eventos baseado na posição do jogador selecionado
-  // Se for goleiro (posição 1), mostrar apenas eventos da categoria GOLEIRO
+  // Goleiro (posição 1): apenas categoria GOLEIRO
+  // Linha: todas as categorias exceto GOLEIRO
   const filteredEvents = useMemo(() => {
     if (!live.selectedPlayerId) return events;
     
@@ -247,9 +248,9 @@ export function LiveScoutScreen() {
     if (selectedPlayerPosition === 1) {
       return events.filter(event => event.category_id === 'goleiro');
     }
-    
-    // Para outras posições, mostrar todos os eventos
-    return events;
+
+    // Para outras posições, ocultar os eventos de goleiro
+    return events.filter(event => event.category_id !== 'goleiro');
   }, [events, live.selectedPlayerId, positionedPlayers]);
 
   // Independent interval to keep bench timers ticking

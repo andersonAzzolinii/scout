@@ -28,11 +28,38 @@ import {
 } from '@/constants/eventCategories';
 
 type Route = RouteProp<RootStackParamList, 'MatchReport'>;
+type PeriodFilter = 'both' | 1 | 2;
+
+type TimedPeriod = {
+  start_minute: number;
+  start_second: number;
+  end_minute: number | null;
+  end_second: number | null;
+  start_timestamp: number | null;
+  end_timestamp: number | null;
+  period: number;
+};
 
 function formatSeconds(total: number): string {
   const m = Math.floor(total / 60);
   const s = total % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function sumPeriodsByFilter(periods: TimedPeriod[], periodFilter: PeriodFilter): number {
+  return periods
+    .filter(period => periodFilter === 'both' || period.period === periodFilter)
+    .reduce((sum, period) => {
+      if (period.start_timestamp != null && period.end_timestamp != null) {
+        return sum + Math.max(0, Math.floor((period.end_timestamp - period.start_timestamp) / 1000));
+      }
+      if (period.end_minute != null && period.end_second != null) {
+        const start = period.start_minute * 60 + period.start_second;
+        const end = period.end_minute * 60 + period.end_second;
+        return sum + Math.max(0, end - start);
+      }
+      return sum;
+    }, 0);
 }
 
 export function MatchReportScreen() {
@@ -45,6 +72,7 @@ export function MatchReportScreen() {
   const [match, setMatch] = useState<Match | null>(null);
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [profileEvents, setProfileEvents] = useState<ScoutEvent[]>([]);
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('both');
 
   useEffect(() => {
     const m = matchRepo.getMatchById(matchId);
@@ -86,19 +114,26 @@ export function MatchReportScreen() {
     [profileStaticIds]
   );
 
+  const filteredEvents = useMemo(
+    () => events.filter(ev => periodFilter === 'both' || ev.period === periodFilter),
+    [events, periodFilter]
+  );
+
   // Build per-player data including field/bench time
   const players = useMemo((): [string, PlayerData][] => {
     const result: Record<string, PlayerData> = {};
 
-    events.forEach(ev => {
+    filteredEvents.forEach(ev => {
       if (!result[ev.player_id]) {
+        const fieldPeriods = fieldRepo.getPlayerFieldPeriods(matchId, ev.player_id);
+        const benchPeriods = benchRepo.getPlayerBenchPeriods(matchId, ev.player_id);
         result[ev.player_id] = {
           name: ev.player_name ?? '?',
           number: ev.player_number ?? 0,
           counts: {},
           lastTimes: {},
-          fieldSeconds: fieldRepo.getTotalFieldTime(matchId, ev.player_id),
-          benchSeconds: benchRepo.getTotalBenchTime(matchId, ev.player_id),
+          fieldSeconds: sumPeriodsByFilter(fieldPeriods, periodFilter),
+          benchSeconds: sumPeriodsByFilter(benchPeriods, periodFilter),
           positive: 0,
           negative: 0,
         };
@@ -117,17 +152,17 @@ export function MatchReportScreen() {
     });
 
     return Object.entries(result).sort(([, a], [, b]) => b.fieldSeconds - a.fieldSeconds);
-  }, [events, matchId, nameToStaticId]);
+  }, [filteredEvents, matchId, nameToStaticId, periodFilter]);
 
   // Aggregate counts across all match events (for summary card)
   const totalCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    events.forEach(ev => {
+    filteredEvents.forEach(ev => {
       const id = nameToStaticId.get((ev.event_name ?? '').toLowerCase());
       if (id) counts[id] = (counts[id] ?? 0) + 1;
     });
     return counts;
-  }, [events, nameToStaticId]);
+  }, [filteredEvents, nameToStaticId]);
 
   // Summary groups driven entirely from eventCategories.ts
   const summaryGroups = useMemo(
@@ -222,6 +257,34 @@ export function MatchReportScreen() {
         showBack
       />
       <ScrollView ref={scrollViewRef} className="flex-1 p-4" showsVerticalScrollIndicator={false}>
+
+        <Card className="mb-4">
+          <View className="flex-row gap-2">
+            {[
+              { value: 'both' as const, label: 'Ambos' },
+              { value: 1 as const, label: '1º tempo' },
+              { value: 2 as const, label: '2º tempo' },
+            ].map(tab => {
+              const active = periodFilter === tab.value;
+              return (
+                <Pressable
+                  key={String(tab.value)}
+                  onPress={() => setPeriodFilter(tab.value)}
+                  className="flex-1 items-center rounded-xl py-2.5"
+                  style={{
+                    backgroundColor: active ? '#111827' : '#f3f4f6',
+                    borderWidth: 1,
+                    borderColor: active ? '#111827' : '#e5e7eb',
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: active ? '#ffffff' : '#6b7280' }}>
+                    {tab.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </Card>
 
         {/* Match summary */}
         <Card className="mb-4">
@@ -427,27 +490,33 @@ export function MatchReportScreen() {
         )}
 
         {/* Per-player cards */}
-        {players.map(([playerId, player]) => (
-          <PlayerAccordionCard
-            key={playerId}
-            playerId={playerId}
-            player={player}
-            relevantGroups={relevantGroups}
-            headerEvents={headerEvents}
-            formatSeconds={formatSeconds}
-            onLayout={e => { playerYOffsets.current[playerId] = e.nativeEvent.layout.y; }}
-          />
-        ))}
+        {players.length > 0 ? (
+          players.map(([playerId, player]) => (
+            <PlayerAccordionCard
+              key={playerId}
+              playerId={playerId}
+              player={player}
+              relevantGroups={relevantGroups}
+              headerEvents={headerEvents}
+              formatSeconds={formatSeconds}
+              onLayout={e => { playerYOffsets.current[playerId] = e.nativeEvent.layout.y; }}
+            />
+          ))
+        ) : (
+          <Card className="mb-4">
+            <Text className="text-sm text-gray-400 text-center py-2">Sem dados para o filtro selecionado</Text>
+          </Card>
+        )}
 
         {/* Timeline */}
         <Card className="mb-8">
           <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
             Linha do Tempo
           </Text>
-          {events.length === 0 ? (
+          {filteredEvents.length === 0 ? (
             <Text className="text-gray-400 text-sm text-center py-3">Sem eventos registrados</Text>
           ) : (
-            events.map(ev => {
+            filteredEvents.map(ev => {
               const staticId = nameToStaticId.get((ev.event_name ?? '').toLowerCase());
               const headerDef = staticId ? headerEvents.find(e => e.id === staticId) : undefined;
               return (
