@@ -116,6 +116,8 @@ export function LiveScoutScreen() {
   const fieldStartTimestamps = useRef<Record<string, number>>({});
   // elapsed seconds when timer was paused for each field player
   const fieldPausedElapsed = useRef<Record<string, number>>({});
+  // elapsed acumulado quando mudou de período (para manter tempo contínuo)
+  const fieldPeriodChangeElapsed = useRef<Record<string, number>>({});
   // tick to force re-render every second while players are on bench
   const [, setTick] = useState(0);
   // tick to force re-render when field timestamps change
@@ -286,8 +288,10 @@ export function LiveScoutScreen() {
     const second = elapsed % 60;
     positionedPlayers.forEach(({ player }) => {
       if (!fieldRepo.isPlayerOnField(match.id, player.player_id)) {
-        fieldRepo.startFieldPeriod(match.id, player.player_id, minute, second);
+        // Todos os jogadores começam do zero no novo período
+        console.log(`[PERIODO ${period}] Player ${player.player_id.slice(0,8)} - Iniciando do zero`);
         fieldStartTimestamps.current[player.player_id] = Date.now();
+        fieldRepo.startFieldPeriod(match.id, player.player_id, minute, second, period);
         setFieldTick(t => t + 1);
       }
     });
@@ -346,6 +350,8 @@ export function LiveScoutScreen() {
       // Clear position in database
       if (match) {
         matchRepo.updateMatchPlayerPosition(match.id, existingPlayer.player.player_id, null);
+        // Limpar elapsed acumulado se existir
+        delete fieldPeriodChangeElapsed.current[existingPlayer.player.player_id];
       }
       return;
     }
@@ -375,7 +381,7 @@ export function LiveScoutScreen() {
             if (isRunning && period > 0) {
               const minute = Math.floor(elapsed / 60);
               const second = elapsed % 60;
-              fieldRepo.startFieldPeriod(match.id, selectedPlayerFromBench.player_id, minute, second);
+              fieldRepo.startFieldPeriod(match.id, selectedPlayerFromBench.player_id, minute, second, period);
               fieldStartTimestamps.current[selectedPlayerFromBench.player_id] = Date.now();
               setFieldTick(t => t + 1);
             }
@@ -413,7 +419,7 @@ export function LiveScoutScreen() {
     if (isRunning && period > 0) {
       const minute = Math.floor(elapsed / 60);
       const second = elapsed % 60;
-      fieldRepo.startFieldPeriod(match.id, player.player_id, minute, second);
+      fieldRepo.startFieldPeriod(match.id, player.player_id, minute, second, period);
       fieldStartTimestamps.current[player.player_id] = Date.now();
       setFieldTick(t => t + 1);
     }
@@ -468,13 +474,14 @@ export function LiveScoutScreen() {
     matchRepo.updateMatchPlayerPosition(match.id, live.selectedPlayerId, null);
     
     // Iniciar período no banco
-    benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second);
+    benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second, period);
     // Registrar timestamp de wall-clock
     benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
 
     // Finalizar período em quadra
     fieldRepo.endFieldPeriod(match.id, live.selectedPlayerId, minute, second);
     delete fieldStartTimestamps.current[live.selectedPlayerId];
+    delete fieldPeriodChangeElapsed.current[live.selectedPlayerId];
     setFieldTick(t => t + 1);
     
     setShowEventsModal(false);
@@ -494,11 +501,12 @@ export function LiveScoutScreen() {
       p => p.player.player_id !== live.selectedPlayerId
     );
     matchRepo.updateMatchPlayerPosition(match.id, live.selectedPlayerId, null);
-    benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second);
+    benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second, period);
     benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
     // Finalizar período em quadra do jogador que sai
     fieldRepo.endFieldPeriod(match.id, live.selectedPlayerId, minute, second);
     delete fieldStartTimestamps.current[live.selectedPlayerId];
+    delete fieldPeriodChangeElapsed.current[live.selectedPlayerId];
     setFieldTick(t => t + 1);
 
     // Jogador que entra: encerra timer do banco (se ativo) e ocupa a posição
@@ -509,7 +517,7 @@ export function LiveScoutScreen() {
       clearBenchElapsed(incomingPlayer.player_id);
     }
     // Iniciar período em quadra do jogador que entra
-    fieldRepo.startFieldPeriod(match.id, incomingPlayer.player_id, minute, second);
+    fieldRepo.startFieldPeriod(match.id, incomingPlayer.player_id, minute, second, period);
     fieldStartTimestamps.current[incomingPlayer.player_id] = Date.now();
     setFieldTick(t => t + 1);
 
@@ -537,6 +545,9 @@ export function LiveScoutScreen() {
     
     // Limpar posição no banco
     matchRepo.updateMatchPlayerPosition(match.id, live.selectedPlayerId, null);
+    
+    // Limpar elapsed acumulado se existir
+    delete fieldPeriodChangeElapsed.current[live.selectedPlayerId];
     
     setShowEventsModal(false);
   };
@@ -662,28 +673,58 @@ export function LiveScoutScreen() {
             {period !== 0 && (
               <TouchableOpacity
                 onPress={() => {
-                  const stopAllBenchTimers = () => {
-                    if (!match) return;
-                    const minute = Math.floor(elapsed / 60);
-                    const second = elapsed % 60;
-                    Object.keys(benchStartTimestamps.current).forEach((playerId) => {
-                      benchRepo.endBenchPeriod(match.id, playerId, minute, second);
-                      delete benchStartTimestamps.current[playerId];
-                    });
-                    Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
-                      fieldRepo.endFieldPeriod(match.id, playerId, minute, second);
-                      delete fieldStartTimestamps.current[playerId];
-                    });
-                  };
                   if (period === 1) {
+                    // INTERVALO: encerrar períodos do 1º tempo, salvar elapsed acumulado
                     Alert.alert('Intervalo', 'Encerrar o 1º tempo?', [
                       { text: 'Cancelar', style: 'cancel' },
-                      { text: 'Confirmar', onPress: () => { stopAllBenchTimers(); markHalfTime(); } },
+                      { 
+                        text: 'Confirmar', 
+                        onPress: () => {
+                          if (!match) return;
+                          const minute = Math.floor(elapsed / 60);
+                          const second = elapsed % 60;
+                          
+                          // Encerrar períodos no banco
+                          Object.keys(benchStartTimestamps.current).forEach((playerId) => {
+                            benchRepo.endBenchPeriod(match.id, playerId, minute, second);
+                            delete benchStartTimestamps.current[playerId];
+                          });
+                          
+                          // Encerrar períodos em quadra - 2º tempo começará do zero
+                          Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
+                            console.log(`[INTERVALO] Player ${playerId.slice(0,8)} - Finalizando 1º tempo`);
+                            fieldRepo.endFieldPeriod(match.id, playerId, minute, second);
+                            delete fieldStartTimestamps.current[playerId];
+                          });
+                          
+                          markHalfTime();
+                        } 
+                      },
                     ]);
                   } else {
+                    // FIM DO JOGO: encerrar tudo
                     Alert.alert('Encerrar Partida', 'Confirmar o fim do jogo?', [
                       { text: 'Cancelar', style: 'cancel' },
-                      { text: 'Confirmar', onPress: () => { stopAllBenchTimers(); markFullTime(); } },
+                      { 
+                        text: 'Confirmar', 
+                        onPress: () => {
+                          if (!match) return;
+                          const minute = Math.floor(elapsed / 60);
+                          const second = elapsed % 60;
+                          // Encerrar períodos no banco
+                          Object.keys(benchStartTimestamps.current).forEach((playerId) => {
+                            benchRepo.endBenchPeriod(match.id, playerId, minute, second);
+                            delete benchStartTimestamps.current[playerId];
+                          });
+                          // Encerrar períodos em quadra
+                          Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
+                            fieldRepo.endFieldPeriod(match.id, playerId, minute, second);
+                            delete fieldStartTimestamps.current[playerId];
+                            delete fieldPeriodChangeElapsed.current[playerId];
+                          });
+                          markFullTime();
+                        } 
+                      },
                     ]);
                   }
                 }}
@@ -995,15 +1036,42 @@ export function LiveScoutScreen() {
                 let totalSec = 0;
                 const chips = fieldPeriods.map((p, idx) => {
                   const isActive = p.end_minute === null;
-                  const endSec = !isActive ? p.end_minute! * 60 + p.end_second! : null;
-                  const durSec = p.start_timestamp
-                    ? p.end_timestamp
-                      ? Math.floor((p.end_timestamp - p.start_timestamp) / 1000)
-                      : Math.floor((Date.now() - p.start_timestamp) / 1000)
-                    : endSec !== null ? endSec - (p.start_minute * 60 + p.start_second) : 0;
+                  
+                  // Calcular duração respeitando pausas
+                  let durSec = 0;
+                  if (isActive) {
+                    // Período ativo
+                    if (p.paused_elapsed_seconds !== null && p.paused_elapsed_seconds !== undefined) {
+                      // Timer está pausado - usar elapsed armazenado
+                      durSec = p.paused_elapsed_seconds;
+                    } else if (p.start_timestamp) {
+                      // Timer rodando - calcular desde timestamp
+                      durSec = Math.floor((Date.now() - p.start_timestamp) / 1000);
+                    }
+                  } else {
+                    // Período finalizado
+                    if (p.start_timestamp && p.end_timestamp) {
+                      durSec = Math.floor((p.end_timestamp - p.start_timestamp) / 1000);
+                    } else {
+                      const endSec = p.end_minute! * 60 + p.end_second!;
+                      durSec = endSec - (p.start_minute * 60 + p.start_second);
+                    }
+                  }
+                  
                   totalSec += durSec;
+                  
+                  // Cores por período
+                  const periodColor = p.period === 1 ? '#3b82f6' : '#22c55e';
+                  const periodBg = p.period === 1 ? 'rgba(59,130,246,0.1)' : 'rgba(34,197,94,0.1)';
+                  
                   return (
                     <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isActive ? 'rgba(21,128,61,0.15)' : 'rgba(55,65,81,0.4)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: isActive ? '#15803d' : '#374151' }}>
+                      {/* Badge do período */}
+                      <View style={{ backgroundColor: periodBg, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2 }}>
+                        <Text style={{ color: periodColor, fontSize: 8, fontWeight: '800', letterSpacing: 0.3 }}>
+                          {p.period === 1 ? '1ºT' : '2ºT'}
+                        </Text>
+                      </View>
                       <Icon name="run-fast" size={11} color={isActive ? '#4ade80' : '#6b7280'} />
                       <Text style={{ color: isActive ? '#4ade80' : '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{fmt(durSec)}</Text>
                       {isActive && <Icon name="dots-horizontal" size={12} color="#4ade80" />}
@@ -1030,15 +1098,38 @@ export function LiveScoutScreen() {
                 let totalSec = 0;
                 const chips = benchPeriods.map((p, idx) => {
                   const isActive = p.end_minute === null;
-                  const endSec = !isActive ? p.end_minute! * 60 + p.end_second! : null;
-                  const durSec = p.start_timestamp
-                    ? p.end_timestamp
-                      ? Math.floor((p.end_timestamp - p.start_timestamp) / 1000)
-                      : Math.floor((Date.now() - p.start_timestamp) / 1000)
-                    : endSec !== null ? endSec - (p.start_minute * 60 + p.start_second) : 0;
+                  
+                  // Calcular duração
+                  let durSec = 0;
+                  if (isActive) {
+                    // Período ativo
+                    if (p.start_timestamp) {
+                      durSec = Math.floor((Date.now() - p.start_timestamp) / 1000);
+                    }
+                  } else {
+                    // Período finalizado
+                    if (p.start_timestamp && p.end_timestamp) {
+                      durSec = Math.floor((p.end_timestamp - p.start_timestamp) / 1000);
+                    } else {
+                      const endSec = p.end_minute! * 60 + p.end_second!;
+                      durSec = endSec - (p.start_minute * 60 + p.start_second);
+                    }
+                  }
+                  
                   totalSec += durSec;
+                  
+                  // Cores por período
+                  const periodColor = p.period === 1 ? '#3b82f6' : '#22c55e';
+                  const periodBg = p.period === 1 ? 'rgba(59,130,246,0.1)' : 'rgba(34,197,94,0.1)';
+                  
                   return (
                     <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isActive ? 'rgba(245,158,11,0.1)' : 'rgba(55,65,81,0.4)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: isActive ? '#f59e0b' : '#374151' }}>
+                      {/* Badge do período */}
+                      <View style={{ backgroundColor: periodBg, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2 }}>
+                        <Text style={{ color: periodColor, fontSize: 8, fontWeight: '800', letterSpacing: 0.3 }}>
+                          {p.period === 1 ? '1ºT' : '2ºT'}
+                        </Text>
+                      </View>
                       <Icon name="seat-outline" size={11} color={isActive ? '#fbbf24' : '#6b7280'} />
                       <Text style={{ color: isActive ? '#fbbf24' : '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{fmt(durSec)}</Text>
                       {isActive && <Icon name="dots-horizontal" size={12} color="#fbbf24" />}

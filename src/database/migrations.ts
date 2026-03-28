@@ -314,4 +314,24 @@ export function runMigrations(): void {
       console.log('✅ Campo paused_elapsed_seconds adicionado');
     }
   } catch (e) { console.warn('Migração paused_elapsed_seconds:', e); }
+
+  // Migração: adicionar campo period na tabela field_periods
+  try {
+    const fieldPeriodsInfo2 = db.getAllSync<{ name: string }>(`PRAGMA table_info(field_periods);`);
+    if (!fieldPeriodsInfo2.some(c => c.name === 'period')) {
+      console.log('🔄 Adicionando campo period na tabela field_periods...');
+      db.execSync(`ALTER TABLE field_periods ADD COLUMN period INTEGER NOT NULL DEFAULT 1;`);
+      console.log('✅ Campo period adicionado');
+    }
+  } catch (e) { console.warn('Migração period field_periods:', e); }
+
+  // Migração: adicionar campo period na tabela bench_periods
+  try {
+    const benchPeriodsInfo2 = db.getAllSync<{ name: string }>(`PRAGMA table_info(bench_periods);`);
+    if (!benchPeriodsInfo2.some(c => c.name === 'period')) {
+      console.log('🔄 Adicionando campo period na tabela bench_periods...');
+      db.execSync(`ALTER TABLE bench_periods ADD COLUMN period INTEGER NOT NULL DEFAULT 1;`);
+      console.log('✅ Campo period adicionado em bench_periods');
+    }
+  } catch (e) { console.warn('Migração period bench_periods:', e); }
 }

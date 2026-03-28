@@ -123,6 +123,7 @@ export interface FieldPeriod {
   start_timestamp: number | null;
   end_timestamp: number | null;
   paused_elapsed_seconds?: number | null;
+  period: number;
   created_at: string;
 }
 
@@ -136,8 +137,7 @@ export interface BenchPeriod {
   end_minute: number | null;
   end_second: number | null;
   start_timestamp: number | null;
-  end_timestamp: number | null;
-  created_at: string;
+  end_timestamp: number | null;  period: number;  created_at: string;
 }
 
 // ─── Event Relations ─────────────────────────────────────────────────────────

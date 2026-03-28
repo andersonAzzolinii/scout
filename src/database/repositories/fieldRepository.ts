@@ -8,16 +8,17 @@ export function startFieldPeriod(
   matchId: string,
   playerId: string,
   minute: number,
-  second: number
+  second: number,
+  period: number
 ): FieldPeriod {
   const db = getDatabase();
   const id = `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const now = Date.now();
 
   db.runSync(
-    `INSERT INTO field_periods (id, match_id, player_id, start_minute, start_second, start_timestamp)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, matchId, playerId, minute, second, now]
+    `INSERT INTO field_periods (id, match_id, player_id, start_minute, start_second, start_timestamp, period)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, matchId, playerId, minute, second, now, period]
   );
 
   return {
@@ -30,6 +31,7 @@ export function startFieldPeriod(
     end_second: null,
     start_timestamp: now,
     end_timestamp: null,
+    period,
     created_at: new Date().toISOString(),
   };
 }
