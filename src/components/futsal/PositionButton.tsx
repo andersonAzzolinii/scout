@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TouchableOpacity, Text, StyleSheet, View, Animated } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
 import { POSITION_BUTTON } from '@/constants/futsal.constants';
@@ -35,11 +35,9 @@ export function PositionButton({
   isTimerRunning = false,
 }: PositionButtonProps) {
   const isOccupied = !!player;
-  const { size, sizeOccupied, radius, colors, shadow } = POSITION_BUTTON;
-  const currentSize = isOccupied ? sizeOccupied : size;
+  const { size } = POSITION_BUTTON;
+  const currentSize = size;
   const halfSize = currentSize / 2;
-  
-  const scaleAnim = React.useRef(new Animated.Value(1)).current;
 
   // Freeze elapsed when timer pauses; resume live calc when running
   const [frozenElapsed, setFrozenElapsed] = useState<number | null>(null);
@@ -89,14 +87,12 @@ export function PositionButton({
     
     return Array.from(groups.values());
   }, [filteredEvents]);
-
-  React.useEffect(() => {
-    Animated.timing(scaleAnim, {
-      toValue: isSelected ? 1.08 : 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
-  }, [isSelected]);
+  const negativeEventsCount = eventGroups
+    .filter(group => !group.isPositive)
+    .reduce((sum, group) => sum + group.count, 0);
+  const positiveEventsCount = eventGroups
+    .filter(group => group.isPositive)
+    .reduce((sum, group) => sum + group.count, 0);
 
   const handlePress = (e: any) => {
     const { pageX, pageY } = e.nativeEvent;
@@ -110,26 +106,25 @@ export function PositionButton({
 
   return (
     <>
-      {/* Glow effect overlay quando selecionado */}
       {isSelected && (
         <View
           style={{
             position: 'absolute',
-            left: screenX - halfSize - 15,
-            top: screenY - halfSize - 15,
-            width: currentSize + 30,
-            height: currentSize + 30,
-            borderRadius: (currentSize + 30) / 2,
+            left: screenX - halfSize - 10,
+            top: screenY - halfSize - 10,
+            width: currentSize + 20,
+            height: currentSize + 20,
+            borderRadius: (currentSize + 20) / 2,
             backgroundColor: 'rgba(255, 255, 255, 0.15)',
             shadowColor: '#e5e7eb',
             shadowOffset: { width: 0, height: 0 },
             shadowOpacity: 1,
-            shadowRadius: 18,
+            shadowRadius: 14,
             elevation: 10,
           }}
         />
       )}
-      
+
       <TouchableOpacity
         onPress={handlePress}
         style={[
@@ -139,7 +134,6 @@ export function PositionButton({
             top: screenY - halfSize,
             width: currentSize,
             height: currentSize,
-            transform: [{ scale: scaleAnim }],
             backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
             borderRadius: currentSize / 2,
             borderWidth: isSelected ? 3 : 0,
@@ -152,62 +146,45 @@ export function PositionButton({
           },
         ]}
       >
-      {isOccupied ? (
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          {/* Negative events — left column */}
-          <View style={{ flexDirection: 'column', gap: 3, alignItems: 'flex-end', marginRight: 3, minWidth: 23 }}>
-            {eventGroups.filter(g => !g.isPositive).map((group, idx) => (
-              <View
-                key={idx}
-                style={[styles.eventBadge, { backgroundColor: '#dc2626' }]}
-              >
-                <Icon name={group.icon as any} size={12} color="#ffffff" />
-                <Text style={styles.eventBadgeCount}>{group.count}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Player avatar + name */}
+        {isOccupied && player ? (
           <View style={styles.avatarContainer}>
-            <PlayerAvatar 
-              photoUri={player.photo_uri}
-              playerNumber={player.player_number ?? 0}
-              size={92}
-            />
-            <Text style={styles.playerName} numberOfLines={1}>
-              {(player.player_name ?? 'Sem nome').split(' ')[0]}
-            </Text>
+            <View style={{ width: currentSize, height: currentSize, alignItems: 'center', justifyContent: 'center' }}>
+              <PlayerAvatar
+                photoUri={player.photo_uri}
+                playerNumber={player.player_number ?? 0}
+                size={currentSize}
+              />
+              {negativeEventsCount > 0 && (
+                <View style={{ position: 'absolute', top: -4, left: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1, borderColor: '#ffffff' }}>
+                  <Text style={{ color: '#ffffff', fontSize: 9, fontWeight: '700' }}>{negativeEventsCount}</Text>
+                </View>
+              )}
+              {positiveEventsCount > 0 && (
+                <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#16a34a', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1, borderColor: '#ffffff' }}>
+                  <Text style={{ color: '#ffffff', fontSize: 9, fontWeight: '700' }}>{positiveEventsCount}</Text>
+                </View>
+              )}
+            </View>
             {fieldStartTs != null && (
-              <View style={{ backgroundColor: '#15803d', borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, marginTop: 3 }}>
-                <Text style={{ color: '#fff', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>
+              <View style={{ backgroundColor: '#15803d', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1, marginTop: 3 }}>
+                <Text style={{ color: '#fff', fontSize: 9, fontFamily: 'monospace', fontWeight: '700' }}>
                   {fieldMinutes}:{fieldSeconds.toString().padStart(2, '0')}
                 </Text>
               </View>
             )}
+            <Text style={styles.playerName} numberOfLines={1}>
+              {(player.player_name ?? 'Sem nome').split(' ')[0]}
+            </Text>
           </View>
-
-          {/* Positive events — right column */}
-          <View style={{ flexDirection: 'column', gap: 3, alignItems: 'flex-start', marginLeft: 3, minWidth: 23 }}>
-            {eventGroups.filter(g => g.isPositive).map((group, idx) => (
-              <View
-                key={idx}
-                style={[styles.eventBadge, { backgroundColor: '#16a34a' }]}
-              >
-                <Icon name={group.icon as any} size={12} color="#ffffff" />
-                <Text style={styles.eventBadgeCount}>{group.count}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      ) : (
-        <PlayerAvatar 
-          photoUri={null}
-          playerNumber={0}
-          size={currentSize}
-          forceJersey={true}
-        />
-      )}
-    </TouchableOpacity>
+        ) : (
+          <PlayerAvatar
+            photoUri={null}
+            playerNumber={0}
+            size={currentSize}
+            forceJersey={true}
+          />
+        )}
+      </TouchableOpacity>
     </>
   );
 }

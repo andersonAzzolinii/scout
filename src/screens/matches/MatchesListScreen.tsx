@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, FlatList, TouchableOpacity, Text } from 'react-native';
+import { Alert, View, FlatList, TouchableOpacity, Text } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
@@ -12,6 +12,21 @@ import { formatDate } from '@/utils';
 import type { RootStackParamList } from '@/navigation/RootNavigator';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+function confirmDeleteMatch(matchId: string, matchLabel: string, deleteMatch: (id: string) => void) {
+  Alert.alert(
+    'Apagar partida',
+    `Deseja apagar a partida ${matchLabel}? Esta acao nao pode ser desfeita.`,
+    [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Apagar',
+        style: 'destructive',
+        onPress: () => deleteMatch(matchId),
+      },
+    ]
+  );
+}
 
 export function MatchesListScreen() {
   const navigation = useNavigation<Nav>();
@@ -76,7 +91,7 @@ export function MatchesListScreen() {
                     <Icon name="chart-bar" size={16} color="#6366f1" />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => deleteMatch(item.id)}
+                    onPress={() => confirmDeleteMatch(item.id, `${item.team_name ?? '?'} vs ${item.opponent_name ?? '?'}`, deleteMatch)}
                     className="w-9 h-9 rounded-full bg-red-50 dark:bg-red-900/30 items-center justify-center"
                   >
                     <Icon name="delete-outline" size={16} color="#ef4444" />

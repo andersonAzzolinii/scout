@@ -935,8 +935,8 @@ export function LiveScoutScreen() {
                   benchStartTs={benchStartTimestamps.current[player.player_id]}
                   pausedElapsed={benchPausedElapsed.current[player.player_id]}
                   isTimerRunning={isRunning}
-                  onPress={() => handleBenchPlayerClick(player)}
-                  isSelected={selectedPlayerFromBench?.player_id === player.player_id}
+                  onPress={() => {}}
+                  isSelected={false}
                   expanded={true}
                 />
               ))}
