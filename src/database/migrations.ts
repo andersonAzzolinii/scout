@@ -343,5 +343,15 @@ export function runMigrations(): void {
       db.execSync(`ALTER TABLE matches ADD COLUMN total_duration_seconds INTEGER;`);
       console.log('✅ Campo total_duration_seconds adicionado');
     }
+    if (!matchesInfo3.some(c => c.name === 'first_half_seconds')) {
+      console.log('🔄 Adicionando campo first_half_seconds na tabela matches...');
+      db.execSync(`ALTER TABLE matches ADD COLUMN first_half_seconds INTEGER;`);
+      console.log('✅ Campo first_half_seconds adicionado');
+    }
+    if (!matchesInfo3.some(c => c.name === 'second_half_seconds')) {
+      console.log('🔄 Adicionando campo second_half_seconds na tabela matches...');
+      db.execSync(`ALTER TABLE matches ADD COLUMN second_half_seconds INTEGER;`);
+      console.log('✅ Campo second_half_seconds adicionado');
+    }
   } catch (e) { console.warn('Migração total_duration_seconds:', e); }
 }

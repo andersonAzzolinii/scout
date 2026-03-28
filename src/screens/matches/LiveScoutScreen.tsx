@@ -801,6 +801,7 @@ export function LiveScoutScreen() {
                           });
                           
                           firstHalfElapsed.current = elapsed;
+                          matchRepo.updateMatchFirstHalf(match.id, elapsed);
                           markHalfTime();
                         } 
                       },
@@ -830,6 +831,7 @@ export function LiveScoutScreen() {
                           markFullTime();
                           const totalDuration = firstHalfElapsed.current + elapsed;
                           matchRepo.updateMatchTotalDuration(match.id, totalDuration);
+                          matchRepo.updateMatchHalfDurations(match.id, firstHalfElapsed.current, elapsed);
                         } 
                       },
                     ]);

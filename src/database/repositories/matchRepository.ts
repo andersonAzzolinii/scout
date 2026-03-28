@@ -110,3 +110,19 @@ export function updateMatchTotalDuration(matchId: string, totalSeconds: number):
     [totalSeconds, matchId]
   );
 }
+
+export function updateMatchHalfDurations(matchId: string, firstHalfSeconds: number, secondHalfSeconds: number): void {
+  const db = getDatabase();
+  db.runSync(
+    `UPDATE matches SET first_half_seconds = ?, second_half_seconds = ? WHERE id = ?`,
+    [firstHalfSeconds, secondHalfSeconds, matchId]
+  );
+}
+
+export function updateMatchFirstHalf(matchId: string, firstHalfSeconds: number): void {
+  const db = getDatabase();
+  db.runSync(
+    `UPDATE matches SET first_half_seconds = ? WHERE id = ?`,
+    [firstHalfSeconds, matchId]
+  );
+}

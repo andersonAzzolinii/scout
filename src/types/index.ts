@@ -68,6 +68,8 @@ export interface Match {
   is_timer_running?: number;
   current_period?: number;
   total_duration_seconds?: number | null;
+  first_half_seconds?: number | null;
+  second_half_seconds?: number | null;
   created_at: string;
   // Joined fields (optional)
   team_name?: string;
