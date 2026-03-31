@@ -7,7 +7,7 @@ import type { MainTabParamList } from './MainTabNavigator';
 
 // ─── Screen imports ───────────────────────────────────────────────────────────
 import { MatchSetupScreen } from '@/screens/matches/MatchSetupScreen';
-import { LiveScoutScreen } from '@/screens/matches/LiveScoutScreen';
+import { LiveScoutRouter } from '@/screens/matches/LiveScoutRouter';
 import { MatchReportScreen } from '@/screens/matches/MatchReportScreen';
 import { ProfileDetailScreen } from '@/screens/profiles/ProfileDetailScreen';
 import { EventFormScreen } from '@/screens/profiles/EventFormScreen';
@@ -64,7 +64,7 @@ export function RootNavigator() {
         />
         <Stack.Screen
           name="LiveScout"
-          component={LiveScoutScreen}
+          component={LiveScoutRouter}
           options={{ animation: 'slide_from_bottom', presentation: 'fullScreenModal' }}
         />
         <Stack.Screen name="MatchReport" component={MatchReportScreen} />
