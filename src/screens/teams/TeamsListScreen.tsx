@@ -20,7 +20,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function TeamsListScreen() {
   const navigation = useNavigation<Nav>();
-  const { teams, loadTeams, createTeam, deleteTeam, updateTeam } = useTeamStore();
+  const { teams, loadTeams, createTeam, deleteTeam, updateTeam, createSquad } = useTeamStore();
   const route = useRoute<RouteProp<MainTabParamList, 'Teams'>>();
   const [showModal, setShowModal] = useState(false);
   const [newName, setNewName] = useState('');
@@ -112,12 +112,21 @@ export function TeamsListScreen() {
     if (editTeam) {
       updateTeam(editTeam.id, newName.trim(), photoBase64, venueInput.trim() || null);
     } else {
+      const teamId = generateId();
       createTeam({ 
-        id: generateId(), 
+        id: teamId, 
         name: newName.trim(), 
         created_at: new Date().toISOString(),
         photo_uri: photoBase64,
         venue: venueInput.trim() || null,
+      });
+      
+      // Criar squad padrão de futsal
+      createSquad({
+        id: `squad-${teamId}`,
+        team_id: teamId,
+        sport_type: 'futsal',
+        name: `${newName.trim()} - Futsal`,
       });
     }
     setShowModal(false);

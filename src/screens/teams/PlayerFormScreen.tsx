@@ -9,6 +9,7 @@ import { Header } from '@/components/ui/Header';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { SquadSelector } from '@/components/ui/SquadSelector';
 import { useTeamStore } from '@/store/useTeamStore';
 import { generateId } from '@/utils';
 import type { RootStackParamList } from '@/navigation/RootNavigator';
@@ -19,14 +20,19 @@ export function PlayerFormScreen() {
   const route = useRoute<Route>();
   const navigation = useNavigation();
   const { teamId, playerId } = route.params;
-  const { players, createPlayer, updatePlayer } = useTeamStore();
+  const { players, squads, createPlayer, updatePlayer, loadSquads } = useTeamStore();
 
   const existing = playerId ? players.find((p) => p.id === playerId) : undefined;
 
   const [name, setName] = useState(existing?.name ?? '');
   const [number, setNumber] = useState(String(existing?.number ?? ''));
   const [photoBase64, setPhotoBase64] = useState<string | null>(existing?.photo_uri ?? null);
+  const [squadId, setSquadId] = useState<string | null>(existing?.squad_id ?? null);
   const [errors, setErrors] = useState<{ name?: string; number?: string }>({});
+
+  useEffect(() => {
+    loadSquads(teamId);
+  }, [teamId]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -121,11 +127,12 @@ export function PlayerFormScreen() {
   const handleSave = () => {
     if (!validate()) return;
     if (existing) {
-      updatePlayer(existing.id, name.trim(), Number(number), photoBase64);
+      updatePlayer(existing.id, name.trim(), Number(number), photoBase64, squadId);
     } else {
       createPlayer({ 
         id: generateId(), 
-        team_id: teamId, 
+        team_id: teamId,
+        squad_id: squadId,
         name: name.trim(), 
         number: Number(number),
         photo_uri: photoBase64 
@@ -189,6 +196,13 @@ export function PlayerFormScreen() {
             placeholder="Ex: 10"
             keyboardType="number-pad"
             error={errors.number}
+          />
+          <SquadSelector
+            squads={squads}
+            selected={squadId}
+            onSelect={setSquadId}
+            label="Elenco (Modalidade)"
+            emptyMessage="Nenhum elenco cadastrado para este time"
           />
           <Button title={existing ? 'Salvar Alterações' : 'Adicionar Jogador'} onPress={handleSave} />
         </Card>

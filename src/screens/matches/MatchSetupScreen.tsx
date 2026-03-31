@@ -14,23 +14,26 @@ import { Header } from '@/components/ui/Header';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
+import { SquadSelector } from '@/components/ui/SquadSelector';
 import { useTeamStore } from '@/store/useTeamStore';
 import { useProfileStore } from '@/store/useProfileStore';
 import { useMatchStore } from '@/store/useMatchStore';
 import { generateId } from '@/utils';
 import type { RootStackParamList } from '@/navigation/RootNavigator';
-import type { Team, ScoutProfile, MatchPlayer } from '@/types';
+import type { Team, ScoutProfile, MatchPlayer, Squad } from '@/types';
 import * as teamRepo from '@/database/repositories/teamRepository';
+import * as profileRepo from '@/database/repositories/profileRepository';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 export function MatchSetupScreen() {
   const navigation = useNavigation<Nav>();
-  const { teams, loadTeams } = useTeamStore();
+  const { teams, squads, loadTeams, loadSquads } = useTeamStore();
   const { profiles, loadProfiles } = useProfileStore();
   const { createMatch, addMatchPlayer } = useMatchStore();
 
   const [team, setTeam] = useState<Team | null>(null);
+  const [squad, setSquad] = useState<Squad | null>(null);
   const [opponent, setOpponent] = useState('');
   const [profile, setProfile] = useState<ScoutProfile | null>(null);
   const [location, setLocation] = useState('');
@@ -38,11 +41,23 @@ export function MatchSetupScreen() {
 
   useEffect(() => { loadTeams(); loadProfiles(); }, []);
 
-  const players = team ? teamRepo.getPlayersByTeam(team.id) : [];
+  useEffect(() => {
+    if (team) {
+      loadSquads(team.id);
+      setSquad(null);
+      setProfile(null);
+    }
+  }, [team]);
+
+  const teamSquads = team ? squads.filter(s => s.team_id === team.id) : [];
+  const compatibleProfiles = squad 
+    ? profileRepo.getProfilesBySportType(squad.sport_type)
+    : profiles;
+  const players = squad ? teamRepo.getPlayersBySquad(squad.id) : [];
 
   const handleCreate = () => {
-    if (!team || !opponent.trim() || !profile) {
-      Alert.alert('Campos obrigatórios', 'Selecione seu time, nome do adversário e perfil de scout.');
+    if (!team || !squad || !opponent.trim() || !profile) {
+      Alert.alert('Campos obrigatórios', 'Selecione seu time, elenco, nome do adversário e perfil de scout.');
       return;
     }
 
@@ -50,6 +65,7 @@ export function MatchSetupScreen() {
     createMatch({
       id: matchId,
       team_id: team.id,
+      squad_id: squad.id,
       opponent_name: opponent.trim(),
       profile_id: profile.id,
       date: new Date().toISOString(),
@@ -125,18 +141,28 @@ export function MatchSetupScreen() {
             selected={team?.id ?? null}
             onSelect={(id) => setTeam(teams.find((t) => t.id === id) ?? null)}
           />
+          {team && (
+            <SquadSelector
+              squads={teamSquads}
+              selected={squad?.id ?? null}
+              onSelect={(id) => setSquad(teamSquads.find((s) => s.id === id) ?? null)}
+              label="Elenco (Modalidade)"
+            />
+          )}
           <Input
             label="Nome do Adversário"
             value={opponent}
             onChangeText={setOpponent}
             placeholder="Ex: FC Barcelona"
           />
-          <SelectorList
-            label="Perfil de Scout"
-            items={profiles}
-            selected={profile?.id ?? null}
-            onSelect={(id) => setProfile(profiles.find((p) => p.id === id) ?? null)}
-          />
+          {squad && (
+            <SelectorList
+              label="Perfil de Scout"
+              items={compatibleProfiles}
+              selected={profile?.id ?? null}
+              onSelect={(id) => setProfile(compatibleProfiles.find((p) => p.id === id) ?? null)}
+            />
+          )}
           {/* Home / Away toggle */}
           <View className="flex-row items-center justify-between mb-4">
             <View>
@@ -168,7 +194,7 @@ export function MatchSetupScreen() {
         </Card>
 
         {/* Botão de iniciar */}
-        {!!(team && profile && opponent.trim()) && (
+        {!!(team && squad && profile && opponent.trim()) && (
           <Button
             title="Iniciar Scout"
             onPress={handleCreate}

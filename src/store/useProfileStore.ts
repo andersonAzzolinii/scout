@@ -9,7 +9,7 @@ interface ProfileStore {
   // Profiles
   loadProfiles: () => void;
   createProfile: (profile: Omit<ScoutProfile, 'created_at'>) => void;
-  updateProfile: (id: string, name: string) => void;
+  updateProfile: (id: string, name: string, sportType?: string) => void;
   deleteProfile: (id: string) => void;
   // Categories
   loadCategories: (profileId: string) => void;
@@ -38,8 +38,8 @@ export const useProfileStore = create<ProfileStore>((set) => ({
     const profiles = profileRepo.getProfiles();
     set({ profiles });
   },
-  updateProfile: (id, name) => {
-    profileRepo.updateProfile(id, name);
+  updateProfile: (id, name, sportType) => {
+    profileRepo.updateProfile(id, name, sportType);
     const profiles = profileRepo.getProfiles();
     set({ profiles });
   },

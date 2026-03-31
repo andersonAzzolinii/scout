@@ -4,22 +4,22 @@ import { SportType } from '../types';
 export const SPORT_TYPES: Record<SportType, { label: string; icon: string; description: string }> = {
   futsal: {
     label: 'Futsal',
-    icon: '⚽',
+    icon: 'soccer',
     description: 'Quadra indoor - 5 jogadores',
   },
   society: {
     label: 'Society',
-    icon: '🥅',
+    icon: 'stadium-variant',
     description: 'Campo sintético - 7 jogadores',
   },
   campo: {
     label: 'Campo',
-    icon: '🏟️',
+    icon: 'stadium',
     description: 'Campo gramado - 11 jogadores',
   },
   all: {
     label: 'Universal',
-    icon: '🌐',
+    icon: 'earth',
     description: 'Compatível com todas modalidades',
   },
 };
