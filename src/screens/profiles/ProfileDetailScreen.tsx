@@ -55,26 +55,27 @@ export function ProfileDetailScreen() {
     });
 
     // Criar categorias e eventos
-    categoriesMap.forEach(({ id: catalogCategoryId, name: categoryName, events }) => {
-      // Verificar se categoria já existe (usando o ID do catálogo)
-      let category = categories.find(c => c.id === catalogCategoryId);
+    categoriesMap.forEach(({ name: categoryName, events }) => {
+      // Verificar se categoria com esse NOME já existe neste perfil
+      let category = categories.find(c => c.name === categoryName);
       
       if (!category) {
-        // Criar nova categoria usando o ID do catálogo
+        // Criar nova categoria com UUID único
+        const newCategoryId = generateId();
         createCategory({
-          id: catalogCategoryId,  // Usar ID do catálogo em vez de gerar UUID
+          id: newCategoryId,
           profile_id: profileId,
           name: categoryName,
           order_index: categories.length,
         });
-        category = { id: catalogCategoryId, profile_id: profileId, name: categoryName, order_index: categories.length };
+        category = { id: newCategoryId, profile_id: profileId, name: categoryName, order_index: categories.length };
       }
 
       // Criar eventos
       events.forEach(event => {
         createEvent({
           id: generateId(),
-          category_id: catalogCategoryId,  // Usar ID do catálogo
+          category_id: category!.id,
           name: event.name,
           icon: event.sentiment === '+' ? 'check-circle' : event.sentiment === '-' ? 'close-circle' : 'circle',
           event_type: 'count',

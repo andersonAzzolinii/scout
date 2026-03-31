@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
-import { FutsalCourt } from '@/components/futsal';
+import { CourtRenderer } from '@/components/CourtRenderer';
 import { Popover } from '@/components/ui/Popover';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
 import { useMatchStore } from '@/store/useMatchStore';
@@ -209,6 +209,19 @@ export function LiveScoutScreen() {
 
   const match = live.match;
   const matchPlayers = live.players;
+
+  // Obter número de jogadores baseado na modalidade
+  const getMaxPlayers = (sportType: string | undefined) => {
+    switch (sportType) {
+      case 'futsal': return 5;
+      case 'society': return 7;
+      case 'campo': return 11;
+      default: return 5;
+    }
+  };
+
+  const maxPlayers = getMaxPlayers(match?.sport_type);
+  const sportType = match?.sport_type || 'futsal';
 
   // Load positioned players from database
   useEffect(() => {
@@ -485,7 +498,7 @@ export function LiveScoutScreen() {
   };
 
   const handleBenchPlayerClick = (player: typeof matchPlayers[0]) => {
-    if (positionedPlayers.length >= 5) return;
+    if (positionedPlayers.length >= maxPlayers) return;
     
     // Se selecionar novamente o mesmo jogador, cancelar seleção
     if (selectedPlayerFromBench?.player_id === player.player_id) {
@@ -718,7 +731,7 @@ export function LiveScoutScreen() {
               {match.team_name} vs {match.opponent_name}
             </Text>
             <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 2 }}>
-              Jogadores: {positionedPlayers.length}/5
+              Jogadores: {positionedPlayers.length}/{maxPlayers}
             </Text>
           </View>
 
@@ -990,7 +1003,8 @@ export function LiveScoutScreen() {
 
         {/* Center: Court */}
         <View className="flex-1 justify-center items-center">
-          <FutsalCourt
+          <CourtRenderer
+            sportType={sportType as any}
             width={Math.min(
               (screenWidth - (showEventsModal && live.selectedPlayerId ? 280 : (availablePlayers.length > 0 ? 120 : 0))) * 0.96,
               (screenHeight - insets.top - 130) * (2 / 3)
