@@ -3,7 +3,7 @@ import { View, ScrollView, TouchableOpacity, Image, Text, Alert } from 'react-na
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { Header } from '@/components/ui/Header';
 import { Button } from '@/components/ui/Button';
@@ -52,7 +52,7 @@ export function PlayerFormScreen() {
       const uri = result.assets[0].uri;
       try {
         const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
+          encoding: 'base64',
         });
         setPhotoBase64(`data:image/jpeg;base64,${base64}`);
       } catch (error) {
@@ -75,7 +75,7 @@ export function PlayerFormScreen() {
       if (asset && asset.uri) {
         try {
           const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-            encoding: FileSystem.EncodingType.Base64,
+            encoding: 'base64',
           });
           setPhotoBase64(`data:image/jpeg;base64,${base64}`);
         } catch (error) {
@@ -106,7 +106,7 @@ export function PlayerFormScreen() {
       const uri = result.assets[0].uri;
       try {
         const base64 = await FileSystem.readAsStringAsync(uri, {
-          encoding: FileSystem.EncodingType.Base64,
+          encoding: 'base64',
         });
         setPhotoBase64(`data:image/jpeg;base64,${base64}`);
       } catch (error) {
