@@ -32,7 +32,7 @@ export const FIXED_POSITIONS: Record<number, PositionCoordinates> = {
   6: { xPercent: 25, yPercent: 52, label: 'VOL' },       // Volante direito
   7: { xPercent: 50, yPercent: 48, label: 'MC' },        // Meio-campo central
   8: { xPercent: 75, yPercent: 52, label: 'VOL' },       // Volante esquerdo
-  9: { xPercent: 50, yPercent: 38, label: 'MEI' },       // Meia-atacante
+  9: { xPercent: 50, yPercent: 28, label: 'MEI' },       // Meia-atacante
   
   // Ataque (2 jogadores)
   10: { xPercent: 35, yPercent: 20, label: 'ATA' },      // Atacante esquerdo

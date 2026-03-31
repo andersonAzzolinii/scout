@@ -593,6 +593,9 @@ export function LiveScoutFutsalScreen() {
     delete fieldPeriodChangeElapsed.current[live.selectedPlayerId];
     setFieldTick(t => t + 1);
 
+    // Registrar substituição
+    matchRepo.recordSubstitution(match.id, live.selectedPlayerId, incomingPlayer.player_id, minute, second, period);
+
     // Jogador que entra: encerra timer do banco (se ativo) e ocupa a posição
     const isOnBench = benchRepo.isPlayerOnBench(match.id, incomingPlayer.player_id);
     if (isOnBench) {

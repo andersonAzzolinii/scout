@@ -168,3 +168,44 @@ export function updateMatchFirstHalf(matchId: string, firstHalfSeconds: number):
     [firstHalfSeconds, matchId]
   );
 }
+
+// ─── Player Substitutions ────────────────────────────────────────────────────
+
+export interface PlayerSubstitution {
+  id: string;
+  match_id: string;
+  player_out_id: string;
+  player_in_id: string;
+  minute: number;
+  second: number;
+  period: number;
+  created_at: string;
+}
+
+export function recordSubstitution(
+  matchId: string,
+  playerOutId: string,
+  playerInId: string,
+  minute: number,
+  second: number,
+  period: number
+): void {
+  const db = getDatabase();
+  const id = `sub_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  db.runSync(
+    `INSERT INTO player_substitutions (id, match_id, player_out_id, player_in_id, minute, second, period)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, matchId, playerOutId, playerInId, minute, second, period]
+  );
+}
+
+export function getMatchSubstitutions(matchId: string): PlayerSubstitution[] {
+  const db = getDatabase();
+  return db.getAllSync<PlayerSubstitution>(
+    `SELECT * FROM player_substitutions
+     WHERE match_id = ?
+     ORDER BY period ASC, minute ASC, second ASC`,
+    [matchId]
+  );
+}

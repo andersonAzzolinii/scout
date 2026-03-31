@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
 import { POSITION_BUTTON } from '@/constants/futsal.constants';
@@ -35,8 +35,11 @@ export function PositionButton({
   isTimerRunning = false,
 }: PositionButtonProps) {
   const isOccupied = !!player;
-  const { size } = POSITION_BUTTON;
-  const currentSize = size;
+  const { width: screenWidth } = useWindowDimensions();
+  // Scale up on larger screens (min 45 on ~390px phone, grows proportionally)
+  const baseSize = POSITION_BUTTON.size;
+  const scaleFactor = Math.max(1, Math.min(screenWidth / 390, 1.6));
+  const currentSize = Math.round(baseSize * scaleFactor);
   const halfSize = currentSize / 2;
 
   // Freeze elapsed when timer pauses; resume live calc when running
@@ -93,6 +96,21 @@ export function PositionButton({
   const positiveEventsCount = eventGroups
     .filter(group => group.isPositive)
     .reduce((sum, group) => sum + group.count, 0);
+
+  // Count cards
+  const yellowCards = filteredEvents.filter(e => {
+    return e.event_id === 'cartao_amarelo' || e.event_name?.toLowerCase().includes('amarelo');
+  }).length;
+  const redCards = filteredEvents.filter(e => {
+    return e.event_id === 'cartao_vermelho' || e.event_name?.toLowerCase().includes('vermelho');
+  }).length;
+
+  // Debug log apenas quando houver cartões
+  React.useEffect(() => {
+    if ((yellowCards > 0 || redCards > 0) && player) {
+      console.log(`[CARDS] ${player.player_name}: ${yellowCards} amarelo(s), ${redCards} vermelho(s)`);
+    }
+  }, [yellowCards, redCards, player]);
 
   const handlePress = (e: any) => {
     const { pageX, pageY } = e.nativeEvent;
@@ -172,8 +190,29 @@ export function PositionButton({
                 </Text>
               </View>
             )}
+            {/* Card badges */}
+            {(yellowCards > 0 || redCards > 0) && (
+              <View style={{ flexDirection: 'row', gap: 4, marginTop: 3, alignItems: 'center' }}>
+                {yellowCards > 0 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                    <View style={{ width: 12, height: 16, backgroundColor: '#eab308', borderRadius: 2, borderWidth: 1, borderColor: '#fbbf24', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.5, shadowRadius: 2, elevation: 3 }} />
+                    {yellowCards > 1 && (
+                      <Text style={{ color: '#fbbf24', fontSize: 10, fontWeight: '800', fontFamily: 'monospace' }}>×{yellowCards}</Text>
+                    )}
+                  </View>
+                )}
+                {redCards > 0 && (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                    <View style={{ width: 12, height: 16, backgroundColor: '#ef4444', borderRadius: 2, borderWidth: 1, borderColor: '#f87171', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.5, shadowRadius: 2, elevation: 3 }} />
+                    {redCards > 1 && (
+                      <Text style={{ color: '#f87171', fontSize: 10, fontWeight: '800', fontFamily: 'monospace' }}>×{redCards}</Text>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
             <Text style={styles.playerName} numberOfLines={1}>
-              {(player.player_name ?? 'Sem nome').split(' ')[0]}
+              {player.player_name ?? 'Sem nome'}
             </Text>
           </View>
         ) : (

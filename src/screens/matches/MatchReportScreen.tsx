@@ -72,7 +72,18 @@ export function MatchReportScreen() {
   const [match, setMatch] = useState<Match | null>(null);
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [profileEvents, setProfileEvents] = useState<ScoutEvent[]>([]);
+  const [substitutions, setSubstitutions] = useState<Array<{
+    id: string;
+    minute: number;
+    second: number;
+    period: number;
+    playerOutName: string;
+    playerOutNumber: number;
+    playerInName: string;
+    playerInNumber: number;
+  }>>([]);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>('both');
+  const [showSubstitutions, setShowSubstitutions] = useState(true);
 
   useEffect(() => {
     const m = matchRepo.getMatchById(matchId);
@@ -81,6 +92,25 @@ export function MatchReportScreen() {
     if (m?.profile_id) {
       setProfileEvents(profileRepo.getEventsByProfile(m.profile_id));
     }
+
+    // Buscar substituições
+    const subs = matchRepo.getMatchSubstitutions(matchId);
+    const matchPlayers = matchRepo.getMatchPlayers(matchId);
+    const subsWithNames = subs.map(sub => {
+      const playerOut = matchPlayers.find(p => p.player_id === sub.player_out_id);
+      const playerIn = matchPlayers.find(p => p.player_id === sub.player_in_id);
+      return {
+        id: sub.id,
+        minute: sub.minute,
+        second: sub.second,
+        period: sub.period,
+        playerOutName: playerOut?.player_name ?? 'Desconhecido',
+        playerOutNumber: playerOut?.player_number ?? 0,
+        playerInName: playerIn?.player_name ?? 'Desconhecido',
+        playerInNumber: playerIn?.player_number ?? 0,
+      };
+    });
+    setSubstitutions(subsWithNames);
   }, [matchId]);
 
   // All events flagged showInHeader
@@ -510,55 +540,216 @@ export function MatchReportScreen() {
 
         {/* Timeline */}
         <Card className="mb-8">
-          <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-            Linha do Tempo
-          </Text>
-          {filteredEvents.length === 0 ? (
-            <Text className="text-gray-400 text-sm text-center py-3">Sem eventos registrados</Text>
-          ) : (
-            filteredEvents.map(ev => {
-              const staticId = nameToStaticId.get((ev.event_name ?? '').toLowerCase());
-              const headerDef = staticId ? headerEvents.find(e => e.id === staticId) : undefined;
-              return (
-                <Pressable
-                  key={ev.id}
-                  onPress={() => {
-                    const y = playerYOffsets.current[ev.player_id];
-                    if (y != null) scrollViewRef.current?.scrollTo({ y, animated: true });
-                  }}
-                  className="flex-row items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-700"
-                >
-                  <Text className="text-xs font-mono text-gray-500 dark:text-gray-400 w-12">
-                    {String(ev.minute).padStart(2, '0')}:{String(ev.second).padStart(2, '0')}
-                  </Text>
-                  <View
-                    style={{
-                      backgroundColor: ev.is_positive ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-                      borderRadius: 4,
-                      paddingHorizontal: 5,
-                      paddingVertical: 3,
+          <View className="flex-row items-center justify-between mb-3">
+            <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+              Linha do Tempo
+            </Text>
+            <Pressable
+              onPress={() => setShowSubstitutions(!showSubstitutions)}
+              className="flex-row items-center gap-2 px-3 py-1.5 rounded-lg"
+              style={{
+                backgroundColor: showSubstitutions ? 'rgba(59,130,246,0.1)' : 'rgba(156,163,175,0.1)',
+              }}
+            >
+              <Icon 
+                name="swap-horizontal" 
+                size={14} 
+                color={showSubstitutions ? '#3b82f6' : '#9ca3af'} 
+              />
+              <Text 
+                className="text-xs font-semibold"
+                style={{ color: showSubstitutions ? '#3b82f6' : '#9ca3af' }}
+              >
+                Substituições
+              </Text>
+            </Pressable>
+          </View>
+          {(() => {
+            // Filtrar substituições pelo período
+            const filteredSubs = showSubstitutions 
+              ? substitutions.filter(sub => periodFilter === 'both' || sub.period === periodFilter)
+              : [];
+
+            // Combinar eventos e substituições
+            type TimelineItem = 
+              | { type: 'event'; data: MatchEvent; period: number }
+              | { type: 'substitution'; data: typeof filteredSubs[0]; period: number }
+              | { type: 'halftime'; data: { minute: number; second: number }; period: 1.5 };
+
+            const timeline: TimelineItem[] = [
+              ...filteredEvents.map(ev => ({ type: 'event' as const, data: ev, period: ev.period ?? 1 })),
+              ...filteredSubs.map(sub => ({ type: 'substitution' as const, data: sub, period: sub.period })),
+            ];
+
+            // Adicionar marcador de início do segundo tempo se houver eventos/subs no 2º tempo
+            const hasSecondHalfItems = 
+              filteredEvents.some(ev => ev.period === 2) || 
+              filteredSubs.some(sub => sub.period === 2);
+
+            if (hasSecondHalfItems && (periodFilter === 'both' || periodFilter === 2)) {
+              timeline.push({
+                type: 'halftime',
+                data: { minute: 0, second: 0 },
+                period: 1.5, // Período intermediário para ordenar entre 1º e 2º tempo
+              });
+            }
+
+            timeline.sort((a, b) => {
+              // Primeiro ordenar por período
+              if (a.period !== b.period) {
+                return a.period - b.period;
+              }
+              // Depois por tempo dentro do período
+              const aTime = a.data.minute * 60 + a.data.second;
+              const bTime = b.data.minute * 60 + b.data.second;
+              return aTime - bTime;
+            });
+
+            if (timeline.length === 0) {
+              return <Text className="text-gray-400 text-sm text-center py-3">Sem eventos registrados</Text>;
+            }
+
+            return timeline.map((item, idx) => {
+              if (item.type === 'event') {
+                const ev = item.data;
+                const staticId = nameToStaticId.get((ev.event_name ?? '').toLowerCase());
+                const headerDef = staticId ? headerEvents.find(e => e.id === staticId) : undefined;
+                return (
+                  <Pressable
+                    key={`event-${ev.id}`}
+                    onPress={() => {
+                      const y = playerYOffsets.current[ev.player_id];
+                      if (y != null) scrollViewRef.current?.scrollTo({ y, animated: true });
                     }}
+                    className="flex-row items-center gap-3 py-2 border-b border-gray-100 dark:border-gray-700"
                   >
-                    <Icon
-                      name={ev.is_positive ? 'plus' : 'minus'}
-                      size={11}
-                      color={ev.is_positive ? '#22c55e' : '#ef4444'}
-                    />
-                  </View>
-                  <View className="flex-1">
-                    <Text
-                      className={headerDef ? 'text-sm font-bold text-gray-800 dark:text-gray-200' : 'text-sm text-gray-800 dark:text-gray-200'}
+                    <Text className="text-xs font-mono text-gray-500 dark:text-gray-400 w-12">
+                      {String(ev.minute).padStart(2, '0')}:{String(ev.second).padStart(2, '0')}
+                    </Text>
+                    <View
+                      style={{
+                        backgroundColor: (ev.period ?? 1) === 1 ? 'rgba(59,130,246,0.12)' : 'rgba(34,197,94,0.12)',
+                        borderRadius: 4,
+                        paddingHorizontal: 4,
+                        paddingVertical: 2,
+                      }}
                     >
-                      {ev.event_name}
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: (ev.period ?? 1) === 1 ? '#3b82f6' : '#22c55e' }}>
+                        {(ev.period ?? 1) === 1 ? '1T' : '2T'}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        backgroundColor: ev.is_positive ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
+                        borderRadius: 4,
+                        paddingHorizontal: 5,
+                        paddingVertical: 3,
+                      }}
+                    >
+                      <Icon
+                        name={ev.is_positive ? 'plus' : 'minus'}
+                        size={11}
+                        color={ev.is_positive ? '#22c55e' : '#ef4444'}
+                      />
+                    </View>
+                    <View className="flex-1">
+                      <Text
+                        className={headerDef ? 'text-sm font-bold text-gray-800 dark:text-gray-200' : 'text-sm text-gray-800 dark:text-gray-200'}
+                      >
+                        {ev.event_name}
+                      </Text>
+                      <Text className="text-xs text-gray-400 dark:text-gray-500">
+                        #{ev.player_number} {ev.player_name}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              } else if (item.type === 'substitution') {
+                // Substituição
+                const sub = item.data;
+                return (
+                  <View
+                    key={`sub-${sub.id}`}
+                    className="flex-row items-center gap-3 py-2.5 border-b border-gray-100 dark:border-gray-700"
+                    style={{ backgroundColor: 'rgba(59,130,246,0.05)' }}
+                  >
+                    <Text className="text-xs font-mono text-gray-500 dark:text-gray-400 w-12">
+                      {String(sub.minute).padStart(2, '0')}:{String(sub.second).padStart(2, '0')}
                     </Text>
-                    <Text className="text-xs text-gray-400 dark:text-gray-500">
-                      #{ev.player_number} {ev.player_name}
-                    </Text>
+                    <View
+                      style={{
+                        backgroundColor: sub.period === 1 ? 'rgba(59,130,246,0.12)' : 'rgba(34,197,94,0.12)',
+                        borderRadius: 4,
+                        paddingHorizontal: 4,
+                        paddingVertical: 2,
+                      }}
+                    >
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: sub.period === 1 ? '#3b82f6' : '#22c55e' }}>
+                        {sub.period === 1 ? '1T' : '2T'}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        backgroundColor: 'rgba(59,130,246,0.15)',
+                        borderRadius: 4,
+                        paddingHorizontal: 5,
+                        paddingVertical: 3,
+                      }}
+                    >
+                      <Icon name="swap-horizontal" size={11} color="#3b82f6" />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                        Substituição
+                      </Text>
+                      <View className="flex-row items-center gap-2 mt-1">
+                        <View className="flex-row items-center gap-1">
+                          <Icon name="arrow-up" size={10} color="#22c55e" />
+                          <Text className="text-xs text-gray-600 dark:text-gray-400">
+                            #{sub.playerInNumber} {sub.playerInName.split(' ')[0]}
+                          </Text>
+                        </View>
+                        <Text className="text-xs text-gray-400">•</Text>
+                        <View className="flex-row items-center gap-1">
+                          <Icon name="arrow-down" size={10} color="#ef4444" />
+                          <Text className="text-xs text-gray-600 dark:text-gray-400">
+                            #{sub.playerOutNumber} {sub.playerOutName.split(' ')[0]}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
                   </View>
-                </Pressable>
-              );
-            })
-          )}
+                );
+              } else {
+                // Início do segundo tempo
+                const firstHalfSeconds = match?.first_half_seconds ?? 0;
+                return (
+                  <View
+                    key="halftime"
+                    className="flex-row items-center gap-3 py-3 border-b border-gray-100 dark:border-gray-700"
+                    style={{ backgroundColor: 'rgba(245,158,11,0.08)' }}
+                  >
+                    <View style={{ width: 12 }} />
+                    <View
+                      style={{
+                        backgroundColor: 'rgba(245,158,11,0.2)',
+                        borderRadius: 4,
+                        paddingHorizontal: 5,
+                        paddingVertical: 3,
+                      }}
+                    >
+                      <Icon name="whistle-outline" size={11} color="#f59e0b" />
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                        Início do 2º Tempo
+                      </Text>
+                    </View>
+                  </View>
+                );
+              }
+            });
+          })()}
         </Card>
       </ScrollView>
     </View>

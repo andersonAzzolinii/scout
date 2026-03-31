@@ -442,4 +442,21 @@ export function runMigrations(): void {
       }
     }
   } catch (e) { console.warn('Migração squad data:', e); }
+
+  // Migração: criar tabela player_substitutions para rastrear substituições
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS player_substitutions (
+      id TEXT PRIMARY KEY NOT NULL,
+      match_id TEXT NOT NULL,
+      player_out_id TEXT NOT NULL,
+      player_in_id TEXT NOT NULL,
+      minute INTEGER NOT NULL,
+      second INTEGER NOT NULL,
+      period INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+      FOREIGN KEY (player_out_id) REFERENCES players(id) ON DELETE CASCADE,
+      FOREIGN KEY (player_in_id) REFERENCES players(id) ON DELETE CASCADE
+    );
+  `);
 }

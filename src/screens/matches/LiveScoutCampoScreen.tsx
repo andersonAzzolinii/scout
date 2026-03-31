@@ -18,13 +18,12 @@ import { CourtRenderer } from '@/components/CourtRenderer';
 import { Popover } from '@/components/ui/Popover';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
 import { useMatchStore } from '@/store/useMatchStore';
-import { useMatchTimer, useBenchPanel } from '@/hooks';
+import { useMatchTimer } from '@/hooks';
 import { generateId, formatTime } from '@/utils';
 import type { RootStackParamList } from '@/navigation/RootNavigator';
 import type { ScoutCategory, ScoutEvent, MatchEvent, PlayerPosition } from '@/types';
 import * as matchRepo from '@/database/repositories/matchRepository';
 import * as profileRepo from '@/database/repositories/profileRepository';
-import * as benchRepo from '@/database/repositories/benchRepository';
 import * as fieldRepo from '@/database/repositories/fieldRepository';
 import { EVENT_CATEGORIES } from '@/constants/eventCategories';
 
@@ -35,35 +34,12 @@ interface BenchPlayerCardProps {
   playerName: string | null;
   playerNumber: number | null;
   photoUri: string | null;
-  benchStartTs?: number;
-  pausedElapsed?: number;
-  isTimerRunning: boolean;
   onPress: () => void;
   isSelected?: boolean;
   expanded?: boolean;
 }
 
-function BenchPlayerCard({ playerName, playerNumber, photoUri, benchStartTs, pausedElapsed, isTimerRunning, onPress, isSelected, expanded }: BenchPlayerCardProps) {
-  const isOnBench = !!benchStartTs;
-  
-  // Se timer pausado e tem elapsed definido, usar o elapsed pausado; senão calcular normalmente
-  let benchTime = 0;
-  if (isOnBench) {
-    if (!isTimerRunning && pausedElapsed !== undefined) {
-      // Timer pausado - usar elapsed armazenado (congelado)
-      benchTime = pausedElapsed;
-    } else if (isTimerRunning) {
-      // Timer rodando - calcular desde timestamp
-      benchTime = Math.floor((Date.now() - benchStartTs!) / 1000);
-    } else {
-      // Timer pausado mas sem elapsed definido - manter em 0
-      benchTime = 0;
-    }
-  }
-  
-  const minutes = Math.floor(benchTime / 60);
-  const seconds = benchTime % 60;
-
+function BenchPlayerCard({ playerName, playerNumber, photoUri, onPress, isSelected, expanded }: BenchPlayerCardProps) {
   return (
     <View className="items-center">
       <TouchableOpacity
@@ -86,11 +62,6 @@ function BenchPlayerCard({ playerName, playerNumber, photoUri, benchStartTs, pau
         <Text className="text-white text-xs mt-1 font-medium" numberOfLines={1}>
           {(playerName ?? 'Sem nome').split(' ')[0]}
         </Text>
-        <View style={{ marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 99, backgroundColor: isOnBench ? '#d97706' : 'transparent', minWidth: 40, alignItems: 'center' }}>
-          <Text style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: '700', color: isOnBench ? '#ffffff' : 'transparent' }}>
-            {minutes}:{seconds.toString().padStart(2, '0')}
-          </Text>
-        </View>
       </TouchableOpacity>
     </View>
   );
@@ -112,8 +83,6 @@ export function LiveScoutCampoScreen() {
     deleteEvent,
     undoLastEvent,
     setTimer,
-    saveBenchElapsed,
-    clearBenchElapsed,
   } = useMatchStore();
 
   const [categories, setCategories] = useState<ScoutCategory[]>([]);
@@ -127,10 +96,6 @@ export function LiveScoutCampoScreen() {
   const [selectedPlayerFromBench, setSelectedPlayerFromBench] = useState<typeof matchPlayers[0] | null>(null);
   const [showEventsModal, setShowEventsModal] = useState(false);
   const [showSwapPanel, setShowSwapPanel] = useState(false);
-  // wall-clock timestamps (ms) when each player entered the bench
-  const benchStartTimestamps = useRef<Record<string, number>>({});
-  // elapsed seconds when timer was paused for each bench player
-  const benchPausedElapsed = useRef<Record<string, number>>({});
   // wall-clock timestamps (ms) when each player entered the field
   const fieldStartTimestamps = useRef<Record<string, number>>({});
   // elapsed seconds when timer was paused for each field player
@@ -139,8 +104,6 @@ export function LiveScoutCampoScreen() {
   const fieldPeriodChangeElapsed = useRef<Record<string, number>>({});
   // elapsed do 1º tempo para calcular duração total da partida
   const firstHalfElapsed = useRef<number>(0);
-  // tick to force re-render every second while players are on bench
-  const [, setTick] = useState(0);
   // tick to force re-render when field timestamps change
   const [, setFieldTick] = useState(0);
   
@@ -148,27 +111,13 @@ export function LiveScoutCampoScreen() {
   const modalScaleAnim = React.useRef(new Animated.Value(0)).current;
   const modalOpacityAnim = React.useRef(new Animated.Value(0)).current;
 
-  // Custom hooks for timer and bench panel
+  // Custom hooks for timer
   const { isRunning, elapsed, period, toggleTimer, markHalfTime, markFullTime } = useMatchTimer();
-  const {
-    isExpanded: isBenchExpanded,
-    heightAnim: benchHeightAnim,
-    overlayOpacityAnim,
-    expand: expandBench,
-    collapse: collapseBench,
-    panResponder,
-  } = useBenchPanel();
   // Load match data
   useEffect(() => {
     const match = matchRepo.getMatchById(matchId);
     if (!match) return;
     startLiveSession(match);
-
-    // Restore bench timers — resume from the paused elapsed if the screen was previously left
-    benchRepo.getActiveBenchPlayers(match.id).forEach((p) => {
-      const pausedSec = live.benchPausedElapsed[p.player_id] ?? 0;
-      benchStartTimestamps.current[p.player_id] = Date.now() - pausedSec * 1000;
-    });
 
     // Restore field timers - usar paused_elapsed se existir, senão calcular do timestamp
     fieldRepo.getActiveFieldPlayers(match.id).forEach((p) => {
@@ -195,17 +144,7 @@ export function LiveScoutCampoScreen() {
     setEvents(evts);
   }, [matchId, startLiveSession]);
 
-  // On unmount: save each active bench player's elapsed so it can be restored next visit
-  useEffect(() => {
-    return () => {
-      const saved: Record<string, number> = {};
-      Object.entries(benchStartTimestamps.current).forEach(([id, ts]) => {
-        saved[id] = Math.floor((Date.now() - ts) / 1000);
-      });
-      if (Object.keys(saved).length > 0) saveBenchElapsed(saved);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
 
   const match = live.match;
   const matchPlayers = live.players;
@@ -257,12 +196,6 @@ export function LiveScoutCampoScreen() {
     return events.filter(event => event.category_id !== 'goleiro');
   }, [events, live.selectedPlayerId, positionedPlayers]);
 
-  // Independent interval to keep bench timers ticking
-  useEffect(() => {
-    const interval = setInterval(() => setTick(t => t + 1), 1000);
-    return () => clearInterval(interval);
-  }, []);
-
   // Close events modal on hardware back button
   useEffect(() => {
     if (!showEventsModal) return;
@@ -272,6 +205,24 @@ export function LiveScoutCampoScreen() {
     });
     return () => subscription.remove();
   }, [showEventsModal]);
+
+  // Pause timer when back button is pressed
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      // Se o modal está aberto, deixar o outro handler lidar
+      if (showEventsModal) return false;
+      
+      // Se o timer está rodando, pausar antes de voltar
+      if (isRunning) {
+        toggleTimer(); // Pausa o timer e salva os tempos
+        return false; // Permite voltar após pausar
+      }
+      
+      // Se não está rodando, permitir navegação normal
+      return false;
+    });
+    return () => subscription.remove();
+  }, [showEventsModal, isRunning, toggleTimer]);
 
   // Animate events modal
   useEffect(() => {
@@ -322,7 +273,7 @@ export function LiveScoutCampoScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period, isRunning]);
 
-  // Quando o timer pausa/retoma, ajustar timestamps dos field players E bench players
+  // Quando o timer pausa/retoma, ajustar timestamps dos field players
   useEffect(() => {
     if (!match) return;
     
@@ -341,17 +292,7 @@ export function LiveScoutCampoScreen() {
         fieldRepo.updateActiveFieldPausedElapsed(match.id, playerId, elapsed);
       });
       
-      // BENCH: calcular elapsed e armazenar
-      Object.keys(benchStartTimestamps.current).forEach((playerId) => {
-        const oldTimestamp = benchStartTimestamps.current[playerId];
-        const elapsed = Math.floor((Date.now() - oldTimestamp) / 1000);
-        benchPausedElapsed.current[playerId] = elapsed;
-        
-        // NÃO ajustar timestamp aqui - manter o original
-      });
-      
       setFieldTick(t => t + 1);
-      setTick(t => t + 1);
     } else {
       
       // FIELD: ajustar timestamps para continuar de onde parou
@@ -364,18 +305,9 @@ export function LiveScoutCampoScreen() {
         fieldRepo.updateActiveFieldPausedElapsed(match.id, playerId, null);
       });
       
-      // BENCH: ajustar timestamps para continuar de onde parou
-      Object.keys(benchPausedElapsed.current).forEach((playerId) => {
-        const pausedElapsed = benchPausedElapsed.current[playerId];
-        const resumedTimestamp = Date.now() - pausedElapsed * 1000;
-        benchStartTimestamps.current[playerId] = resumedTimestamp;
-      });
-      
       // Limpar o registro de pause local
       fieldPausedElapsed.current = {};
-      benchPausedElapsed.current = {};
       setFieldTick(t => t + 1);
-      setTick(t => t + 1);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning]);
@@ -398,18 +330,6 @@ export function LiveScoutCampoScreen() {
 
     // If has selected player from bench, position directly
     if (selectedPlayerFromBench) {
-      // Se o jogador estava no banco, finalizar o período (apenas se a partida já começou)
-      if (match && period > 0) {
-        const isOnBench = benchRepo.isPlayerOnBench(match.id, selectedPlayerFromBench.player_id);
-        if (isOnBench) {
-          const minute = Math.floor(elapsed / 60);
-          const second = elapsed % 60;
-          benchRepo.endBenchPeriod(match.id, selectedPlayerFromBench.player_id, minute, second);
-          delete benchStartTimestamps.current[selectedPlayerFromBench.player_id];
-          delete benchPausedElapsed.current[selectedPlayerFromBench.player_id];
-          clearBenchElapsed(selectedPlayerFromBench.player_id);
-        }
-      }
       
       setPositionedPlayers([...positionedPlayers, { 
         player: selectedPlayerFromBench, 
@@ -447,19 +367,6 @@ export function LiveScoutCampoScreen() {
 
   const handlePlayerSelect = (player: typeof matchPlayers[0]) => {
     if (!selectedPositionSlot || !match) return;
-    
-    // Se o jogador estava no banco, finalizar o período (apenas se a partida já começou)
-    if (period > 0) {
-      const isOnBench = benchRepo.isPlayerOnBench(match.id, player.player_id);
-      if (isOnBench) {
-        const minute = Math.floor(elapsed / 60);
-        const second = elapsed % 60;
-        benchRepo.endBenchPeriod(match.id, player.player_id, minute, second);
-        delete benchStartTimestamps.current[player.player_id];
-        delete benchPausedElapsed.current[player.player_id];
-        clearBenchElapsed(player.player_id);
-      }
-    }
     
     setPositionedPlayers([...positionedPlayers, { 
       player, 
@@ -535,27 +442,11 @@ export function LiveScoutCampoScreen() {
     // Limpar posição no banco
     matchRepo.updateMatchPlayerPosition(match.id, live.selectedPlayerId, null);
     
-    // Iniciar período no banco
-    benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second, period);
-    
-    // Registrar timestamp de wall-clock
-    // Se timer pausado, já congelar o timestamp e marcar elapsed como 0
-    const elapsedToFreeze = 0;
-    if (!isRunning) {
-      const frozenTimestamp = Date.now() - elapsedToFreeze * 1000;
-      benchStartTimestamps.current[live.selectedPlayerId] = frozenTimestamp;
-      benchPausedElapsed.current[live.selectedPlayerId] = elapsedToFreeze;
-      console.log(`[SEND TO BENCH] Timer pausado - jogador ${live.selectedPlayerId.slice(0,8)} inicia no banco CONGELADO em ${elapsedToFreeze}s`);
-    } else {
-      benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
-    }
-
     // Finalizar período em quadra
     fieldRepo.endFieldPeriod(match.id, live.selectedPlayerId, minute, second);
     delete fieldStartTimestamps.current[live.selectedPlayerId];
     delete fieldPeriodChangeElapsed.current[live.selectedPlayerId];
     setFieldTick(t => t + 1);
-    setTick(t => t + 1);
     
     setShowEventsModal(false);
   };
@@ -566,7 +457,7 @@ export function LiveScoutCampoScreen() {
     const minute = Math.floor(elapsed / 60);
     const second = elapsed % 60;
 
-    // Jogador que sai: remove da posição e inicia timer no banco
+    // Jogador que sai: remove da posição
     const outgoing = positionedPlayers.find(p => p.player.player_id === live.selectedPlayerId);
     const outgoingPosition = outgoing?.position ?? null;
 
@@ -574,18 +465,6 @@ export function LiveScoutCampoScreen() {
       p => p.player.player_id !== live.selectedPlayerId
     );
     matchRepo.updateMatchPlayerPosition(match.id, live.selectedPlayerId, null);
-    benchRepo.startBenchPeriod(match.id, live.selectedPlayerId, minute, second, period);
-    
-    // Se timer pausado, congelar timestamp do jogador que vai para o banco
-    const elapsedToFreeze = 0;
-    if (!isRunning) {
-      // Timestamp congelado: calcula um timestamp que sempre resulta em elapsed=0
-      const frozenTimestamp = Date.now() - elapsedToFreeze * 1000;
-      benchStartTimestamps.current[live.selectedPlayerId] = frozenTimestamp;
-      benchPausedElapsed.current[live.selectedPlayerId] = elapsedToFreeze;
-    } else {
-      benchStartTimestamps.current[live.selectedPlayerId] = Date.now();
-    }
     
     // Finalizar período em quadra do jogador que sai
     fieldRepo.endFieldPeriod(match.id, live.selectedPlayerId, minute, second);
@@ -593,16 +472,10 @@ export function LiveScoutCampoScreen() {
     delete fieldPeriodChangeElapsed.current[live.selectedPlayerId];
     setFieldTick(t => t + 1);
 
-    // Jogador que entra: encerra timer do banco (se ativo) e ocupa a posição
-    const isOnBench = benchRepo.isPlayerOnBench(match.id, incomingPlayer.player_id);
-    if (isOnBench) {
-      benchRepo.endBenchPeriod(match.id, incomingPlayer.player_id, minute, second);
-      delete benchStartTimestamps.current[incomingPlayer.player_id];
-      delete benchPausedElapsed.current[incomingPlayer.player_id];
-      clearBenchElapsed(incomingPlayer.player_id);
-    }
-    
-    // Iniciar período em quadra do jogador que entra
+    // Registrar substituição
+    matchRepo.recordSubstitution(match.id, live.selectedPlayerId, incomingPlayer.player_id, minute, second, period);
+
+    // Jogador que entra: iniciar período em quadra
     fieldRepo.startFieldPeriod(match.id, incomingPlayer.player_id, minute, second, period);
     
     // Se timer pausado, congelar timestamp do jogador que entra em quadra
@@ -619,14 +492,6 @@ export function LiveScoutCampoScreen() {
     }
     
     setFieldTick(t => t + 1);
-    setTick(t => t + 1);
-    
-    console.log('[SWAP] Estado final após swap:');
-    console.log('  - benchStartTimestamps:', benchStartTimestamps.current);
-    console.log('  - benchPausedElapsed:', benchPausedElapsed.current);
-    console.log('  - fieldStartTimestamps:', fieldStartTimestamps.current);
-    console.log('  - fieldPausedElapsed:', fieldPausedElapsed.current);
-    console.log('  - isRunning:', isRunning);
 
     const newPositions = outgoingPosition != null
       ? [...updatedPositions, { player: incomingPlayer, position: outgoingPosition }]
@@ -791,13 +656,6 @@ export function LiveScoutCampoScreen() {
                           const minute = Math.floor(elapsed / 60);
                           const second = elapsed % 60;
                           
-                          // Encerrar períodos no banco
-                          Object.keys(benchStartTimestamps.current).forEach((playerId) => {
-                            benchRepo.endBenchPeriod(match.id, playerId, minute, second);
-                            delete benchStartTimestamps.current[playerId];
-                            delete benchPausedElapsed.current[playerId];
-                          });
-                          
                           // Encerrar períodos em quadra - 2º tempo começará do zero
                           Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
                             console.log(`[INTERVALO] Player ${playerId.slice(0,8)} - Finalizando 1º tempo`);
@@ -821,12 +679,6 @@ export function LiveScoutCampoScreen() {
                           if (!match) return;
                           const minute = Math.floor(elapsed / 60);
                           const second = elapsed % 60;
-                          // Encerrar períodos no banco
-                          Object.keys(benchStartTimestamps.current).forEach((playerId) => {
-                            benchRepo.endBenchPeriod(match.id, playerId, minute, second);
-                            delete benchStartTimestamps.current[playerId];
-                            delete benchPausedElapsed.current[playerId];
-                          });
                           // Encerrar períodos em quadra
                           Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
                             fieldRepo.endFieldPeriod(match.id, playerId, minute, second);
@@ -908,16 +760,6 @@ export function LiveScoutCampoScreen() {
               <Text style={{ color: '#6b7280', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
                 RESERVAS
               </Text>
-              {(() => {
-                const playersOnBench = availablePlayers.filter(p =>
-                  match && benchRepo.isPlayerOnBench(match.id, p.player_id)
-                ).length;
-                return playersOnBench > 0 ? (
-                  <View style={{ backgroundColor: '#d97706', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
-                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>{playersOnBench} fora</Text>
-                  </View>
-                ) : null;
-              })()}
             </View>
             {selectedPlayerFromBench && (
               <View style={{ paddingHorizontal: 6, paddingBottom: 4 }}>
@@ -937,11 +779,8 @@ export function LiveScoutCampoScreen() {
                   playerName={player.player_name ?? null}
                   playerNumber={player.player_number ?? null}
                   photoUri={player.photo_uri ?? null}
-                  benchStartTs={benchStartTimestamps.current[player.player_id]}
-                  pausedElapsed={benchPausedElapsed.current[player.player_id]}
-                  isTimerRunning={isRunning}
-                  onPress={() => {}}
-                  isSelected={false}
+                  onPress={() => handleBenchPlayerClick(player)}
+                  isSelected={selectedPlayerFromBench?.player_id === player.player_id}
                   expanded={true}
                 />
               ))}
@@ -1083,9 +922,6 @@ export function LiveScoutCampoScreen() {
                     playerName={player.player_name ?? null}
                     playerNumber={player.player_number ?? null}
                     photoUri={player.photo_uri ?? null}
-                    benchStartTs={benchStartTimestamps.current[player.player_id]}
-                    pausedElapsed={benchPausedElapsed.current[player.player_id]}
-                    isTimerRunning={isRunning}
                     onPress={() => handlePlayerSelect(player)}
                   />
                 ))}
@@ -1106,7 +942,6 @@ export function LiveScoutCampoScreen() {
       {showEventsModal && live.selectedPlayerId && !showSwapPanel && period > 0 && (() => {
         const selId = live.selectedPlayerId;
         const selPlayer = positionedPlayers.find(p => p.player.player_id === selId)?.player;
-        const benchPeriods = match && selPlayer ? benchRepo.getPlayerBenchPeriods(match.id, selPlayer.player_id) : [];
         const fieldPeriods = match && selPlayer ? fieldRepo.getPlayerFieldPeriods(match.id, selPlayer.player_id) : [];
         const fmt = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
         return (
@@ -1207,68 +1042,6 @@ export function LiveScoutCampoScreen() {
               </View>
             );
           })()}
-          {/* Bench history */}
-          {benchPeriods.length > 0 && (() => {
-            let totalSec = 0;
-            const chips = [...benchPeriods].sort((a, b) => a.period - b.period).map((p, idx) => {
-                  const isActive = p.end_minute === null;
-                  
-                  // Calcular duração
-                  let durSec = 0;
-                  if (isActive) {
-                    // Período ativo no banco
-                    if (selPlayer && benchPausedElapsed.current[selPlayer.player_id] !== undefined) {
-                      // Timer pausado - usar ref de elapsed pausado
-                      durSec = benchPausedElapsed.current[selPlayer.player_id];
-                    } else if (selPlayer && benchStartTimestamps.current[selPlayer.player_id]) {
-                      // Timer rodando - usar ref ajustado (já corrigido para excluir tempo pausado)
-                      durSec = Math.floor((Date.now() - benchStartTimestamps.current[selPlayer.player_id]) / 1000);
-                    } else if (p.start_timestamp) {
-                      durSec = Math.floor((Date.now() - p.start_timestamp) / 1000);
-                    }
-                  } else {
-                    // Período finalizado
-                    if (p.start_timestamp && p.end_timestamp) {
-                      durSec = Math.floor((p.end_timestamp - p.start_timestamp) / 1000);
-                    } else {
-                      const endSec = p.end_minute! * 60 + p.end_second!;
-                      durSec = endSec - (p.start_minute * 60 + p.start_second);
-                    }
-                  }
-                  
-                  totalSec += durSec;
-                  
-                  // Cores por período
-                  const periodColor = p.period === 1 ? '#3b82f6' : '#22c55e';
-                  const periodBg = p.period === 1 ? 'rgba(59,130,246,0.1)' : 'rgba(34,197,94,0.1)';
-                  
-                  return (
-                    <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: isActive ? 'rgba(245,158,11,0.1)' : 'rgba(55,65,81,0.4)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: isActive ? '#f59e0b' : '#374151' }}>
-                      {/* Badge do período */}
-                      <View style={{ backgroundColor: periodBg, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2 }}>
-                        <Text style={{ color: periodColor, fontSize: 8, fontWeight: '800', letterSpacing: 0.3 }}>
-                          {p.period === 1 ? '1ºT' : '2ºT'}
-                        </Text>
-                      </View>
-                      <Icon name="seat-outline" size={11} color={isActive ? '#fbbf24' : '#6b7280'} />
-                      <Text style={{ color: isActive ? '#fbbf24' : '#9ca3af', fontSize: 10, fontFamily: 'monospace', fontWeight: '700' }}>{fmt(durSec)}</Text>
-                      {isActive && <Icon name="dots-horizontal" size={12} color="#fbbf24" />}
-                    </View>
-                  );
-                });
-            return (
-              <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10 }}>
-                <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 6 }}>Banco:</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6, alignItems: 'center', flexDirection: 'row' }}>
-                  {chips}
-                </ScrollView>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(99,102,241,0.12)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, borderWidth: 1, borderColor: '#6366f1', marginLeft: 6 }}>
-                  <Icon name="sigma" size={11} color="#818cf8" />
-                  <Text style={{ color: '#818cf8', fontSize: 10, fontFamily: 'monospace', fontWeight: '800' }}>{fmt(totalSec)}</Text>
-                </View>
-              </View>
-            );
-          })()}
           {/* Action buttons */}
           <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 12, paddingTop: 10, paddingBottom: insets.bottom + 10 }}>
           <TouchableOpacity
@@ -1313,22 +1086,15 @@ export function LiveScoutCampoScreen() {
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {benchPlayers.map(player => {
-                    const benchTs = benchStartTimestamps.current[player.player_id];
-                    const pausedEl = benchPausedElapsed.current[player.player_id];
-                    return (
-                      <BenchPlayerCard
-                        key={player.player_id}
-                        playerName={player.player_name ?? null}
-                        playerNumber={player.player_number ?? null}
-                        photoUri={player.photo_uri ?? null}
-                        benchStartTs={benchTs}
-                        pausedElapsed={pausedEl}
-                        isTimerRunning={isRunning}
-                        onPress={() => handleSwapPlayer(player)}
-                      />
-                    );
-                  })}
+                  {benchPlayers.map(player => (
+                    <BenchPlayerCard
+                      key={player.player_id}
+                      playerName={player.player_name ?? null}
+                      playerNumber={player.player_number ?? null}
+                      photoUri={player.photo_uri ?? null}
+                      onPress={() => handleSwapPlayer(player)}
+                    />
+                  ))}
                 </View>
               </ScrollView>
             )}
