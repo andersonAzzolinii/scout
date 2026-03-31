@@ -1,6 +1,9 @@
 // ─── Event Types ─────────────────────────────────────────────────────────────
 export type EventType = 'count' | 'position' | 'relation';
 
+// ─── Sport Types ─────────────────────────────────────────────────────────────
+export type SportType = 'futsal' | 'society' | 'campo' | 'all';
+
 // ─── Users ───────────────────────────────────────────────────────────────────
 export interface User {
   id: string;
@@ -14,6 +17,7 @@ export interface ScoutProfile {
   id: string;
   user_id: string;
   name: string;
+  sport_type: SportType;
   created_at: string;
 }
 
@@ -45,20 +49,36 @@ export interface Team {
   created_at: string;
 }
 
+// ─── Squads ──────────────────────────────────────────────────────────────────
+export interface Squad {
+  id: string;
+  team_id: string;
+  sport_type: SportType;
+  name: string;
+  created_at: string;
+  // Joined fields (optional)
+  team_name?: string;
+}
+
 // ─── Players ─────────────────────────────────────────────────────────────────
 export interface Player {
   id: string;
   team_id: string;
+  squad_id?: string | null;
   name: string;
   number: number;
   photo_uri?: string | null;
   created_at: string;
+  // Joined fields (optional)
+  squad_name?: string;
+  sport_type?: SportType;
 }
 
 // ─── Matches ─────────────────────────────────────────────────────────────────
 export interface Match {
   id: string;
   team_id: string;
+  squad_id?: string | null;
   opponent_name: string;
   profile_id: string;
   date: string;
@@ -73,6 +93,8 @@ export interface Match {
   created_at: string;
   // Joined fields (optional)
   team_name?: string;
+  squad_name?: string;
+  sport_type?: SportType;
   profile_name?: string;
 }
 

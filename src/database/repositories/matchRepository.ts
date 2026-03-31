@@ -8,9 +8,12 @@ export function getMatches(): Match[] {
   return db.getAllSync<Match>(
     `SELECT m.*,
        t.name AS team_name,
+       s.name AS squad_name,
+       s.sport_type,
        sp.name AS profile_name
      FROM matches m
      JOIN teams t ON m.team_id = t.id
+     LEFT JOIN squads s ON m.squad_id = s.id
      JOIN scout_profiles sp ON m.profile_id = sp.id
      ORDER BY m.date DESC`
   );
@@ -22,9 +25,12 @@ export function getMatchById(id: string): Match | null {
     db.getFirstSync<Match>(
       `SELECT m.*,
          t.name AS team_name,
+         s.name AS squad_name,
+         s.sport_type,
          sp.name AS profile_name
        FROM matches m
        JOIN teams t ON m.team_id = t.id
+       LEFT JOIN squads s ON m.squad_id = s.id
        JOIN scout_profiles sp ON m.profile_id = sp.id
        WHERE m.id = ?`,
       [id]
@@ -32,18 +38,54 @@ export function getMatchById(id: string): Match | null {
   );
 }
 
-export function createMatch(match: Omit<Match, 'created_at' | 'team_name' | 'profile_name'>): void {
+export function createMatch(match: Omit<Match, 'created_at' | 'team_name' | 'squad_name' | 'sport_type' | 'profile_name'>): void {
   const db = getDatabase();
   db.runSync(
-    `INSERT INTO matches (id, team_id, opponent_name, profile_id, date, location, is_home)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [match.id, match.team_id, match.opponent_name, match.profile_id, match.date, match.location, match.is_home ? 1 : 0]
+    `INSERT INTO matches (id, team_id, squad_id, opponent_name, profile_id, date, location, is_home)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [match.id, match.team_id, match.squad_id ?? null, match.opponent_name, match.profile_id, match.date, match.location, match.is_home ? 1 : 0]
   );
 }
 
 export function deleteMatch(id: string): void {
   const db = getDatabase();
   db.runSync(`DELETE FROM matches WHERE id = ?`, [id]);
+}
+
+export function getMatchesBySquad(squadId: string): Match[] {
+  const db = getDatabase();
+  return db.getAllSync<Match>(
+    `SELECT m.*,
+       t.name AS team_name,
+       s.name AS squad_name,
+       s.sport_type,
+       sp.name AS profile_name
+     FROM matches m
+     JOIN teams t ON m.team_id = t.id
+     LEFT JOIN squads s ON m.squad_id = s.id
+     JOIN scout_profiles sp ON m.profile_id = sp.id
+     WHERE m.squad_id = ?
+     ORDER BY m.date DESC`,
+    [squadId]
+  );
+}
+
+export function getMatchesBySportType(sportType: string): Match[] {
+  const db = getDatabase();
+  return db.getAllSync<Match>(
+    `SELECT m.*,
+       t.name AS team_name,
+       s.name AS squad_name,
+       s.sport_type,
+       sp.name AS profile_name
+     FROM matches m
+     JOIN teams t ON m.team_id = t.id
+     LEFT JOIN squads s ON m.squad_id = s.id
+     JOIN scout_profiles sp ON m.profile_id = sp.id
+     WHERE s.sport_type = ?
+     ORDER BY m.date DESC`,
+    [sportType]
+  );
 }
 
 // ─── Match Players ───────────────────────────────────────────────────────────

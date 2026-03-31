@@ -56,6 +56,18 @@ export function runMigrations(): void {
     );
   `);
 
+  // Criar tabela squads (elencos por modalidade)
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS squads (
+      id TEXT PRIMARY KEY NOT NULL,
+      team_id TEXT NOT NULL,
+      sport_type TEXT NOT NULL DEFAULT 'futsal',
+      name TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+    );
+  `);
+
   db.execSync(`
     CREATE TABLE IF NOT EXISTS players (
       id TEXT PRIMARY KEY NOT NULL,
@@ -354,4 +366,80 @@ export function runMigrations(): void {
       console.log('✅ Campo second_half_seconds adicionado');
     }
   } catch (e) { console.warn('Migração total_duration_seconds:', e); }
+
+  // ============================================================================
+  // MIGRAÇÃO SQUAD SYSTEM - Suporte para múltiplas modalidades
+  // ============================================================================
+
+  // Migração: adicionar sport_type na tabela scout_profiles
+  try {
+    const profilesInfo = db.getAllSync<{ name: string }>(`PRAGMA table_info(scout_profiles);`);
+    if (!profilesInfo.some(c => c.name === 'sport_type')) {
+      console.log('🔄 Adicionando campo sport_type na tabela scout_profiles...');
+      db.execSync(`ALTER TABLE scout_profiles ADD COLUMN sport_type TEXT NOT NULL DEFAULT 'futsal';`);
+      console.log('✅ Campo sport_type adicionado');
+    }
+  } catch (e) { console.warn('Migração sport_type profiles:', e); }
+
+  // Migração: adicionar squad_id na tabela players
+  try {
+    const playersInfo2 = db.getAllSync<{ name: string }>(`PRAGMA table_info(players);`);
+    if (!playersInfo2.some(c => c.name === 'squad_id')) {
+      console.log('🔄 Adicionando campo squad_id na tabela players...');
+      db.execSync(`ALTER TABLE players ADD COLUMN squad_id TEXT;`);
+      console.log('✅ Campo squad_id adicionado');
+    }
+  } catch (e) { console.warn('Migração squad_id players:', e); }
+
+  // Migração: adicionar squad_id na tabela matches
+  try {
+    const matchesInfo4 = db.getAllSync<{ name: string }>(`PRAGMA table_info(matches);`);
+    if (!matchesInfo4.some(c => c.name === 'squad_id')) {
+      console.log('🔄 Adicionando campo squad_id na tabela matches...');
+      db.execSync(`ALTER TABLE matches ADD COLUMN squad_id TEXT;`);
+      console.log('✅ Campo squad_id adicionado');
+    }
+  } catch (e) { console.warn('Migração squad_id matches:', e); }
+
+  // Migração: criar squads default para times existentes (migração de dados)
+  try {
+    const existingSquads = db.getAllSync<{ id: string }>(
+      `SELECT id FROM squads LIMIT 1;`
+    );
+
+    // Se não há squads, criar squads padrão para todos os times
+    if (existingSquads.length === 0) {
+      console.log('🔄 Criando squads padrão para times existentes...');
+      
+      const teams = db.getAllSync<{ id: string; name: string }>(
+        `SELECT id, name FROM teams;`
+      );
+
+      if (teams.length > 0) {
+        for (const team of teams) {
+          const squadId = `squad-${team.id}`;
+          db.execSync(`
+            INSERT OR IGNORE INTO squads (id, team_id, sport_type, name, created_at)
+            VALUES (?, ?, 'futsal', ?, datetime('now'));
+          `, [squadId, team.id, `${team.name} - Futsal`]);
+        }
+
+        // Vincular jogadores existentes aos squads
+        db.execSync(`
+          UPDATE players 
+          SET squad_id = 'squad-' || team_id
+          WHERE squad_id IS NULL;
+        `);
+
+        // Vincular partidas existentes aos squads
+        db.execSync(`
+          UPDATE matches 
+          SET squad_id = 'squad-' || team_id
+          WHERE squad_id IS NULL;
+        `);
+
+        console.log(`✅ ${teams.length} squads padrão criados e dados migrados`);
+      }
+    }
+  } catch (e) { console.warn('Migração squad data:', e); }
 }

@@ -21,14 +21,18 @@ export function getProfileById(id: string): ScoutProfile | null {
 export function createProfile(profile: Omit<ScoutProfile, 'created_at'>): void {
   const db = getDatabase();
   db.runSync(
-    `INSERT INTO scout_profiles (id, user_id, name) VALUES (?, ?, ?)`,
-    [profile.id, profile.user_id, profile.name]
+    `INSERT INTO scout_profiles (id, user_id, name, sport_type) VALUES (?, ?, ?, ?)`,
+    [profile.id, profile.user_id, profile.name, profile.sport_type]
   );
 }
 
-export function updateProfile(id: string, name: string): void {
+export function updateProfile(id: string, name: string, sportType?: string): void {
   const db = getDatabase();
-  db.runSync(`UPDATE scout_profiles SET name = ? WHERE id = ?`, [name, id]);
+  if (sportType) {
+    db.runSync(`UPDATE scout_profiles SET name = ?, sport_type = ? WHERE id = ?`, [name, sportType, id]);
+  } else {
+    db.runSync(`UPDATE scout_profiles SET name = ? WHERE id = ?`, [name, id]);
+  }
 }
 
 export function deleteProfile(id: string): void {
@@ -42,6 +46,24 @@ export function deleteProfile(id: string): void {
   db.runSync(`DELETE FROM scout_categories WHERE profile_id = ?`, [id]);
   // Por último, deletar o perfil
   db.runSync(`DELETE FROM scout_profiles WHERE id = ?`, [id]);
+}
+
+export function getProfilesBySportType(sportType: string): ScoutProfile[] {
+  const db = getDatabase();
+  return db.getAllSync<ScoutProfile>(
+    `SELECT * FROM scout_profiles 
+     WHERE sport_type = ? OR sport_type = 'all'
+     ORDER BY created_at DESC`,
+    [sportType]
+  );
+}
+
+export function getProfilesByUserId(userId: string): ScoutProfile[] {
+  const db = getDatabase();
+  return db.getAllSync<ScoutProfile>(
+    `SELECT * FROM scout_profiles WHERE user_id = ? ORDER BY created_at DESC`,
+    [userId]
+  );
 }
 
 // ─── Categories ──────────────────────────────────────────────────────────────
