@@ -5,7 +5,7 @@ import { useTheme } from '@/theme/ThemeProvider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HomeScreen } from '@/screens/home/HomeScreen';
-import { DashboardScreen } from '@/screens/dashboard/DashboardScreen';
+// import { DashboardScreen } from '@/screens/dashboard/DashboardScreen';
 import { MatchesListScreen } from '@/screens/matches/MatchesListScreen';
 import { TeamsListScreen } from '@/screens/teams/TeamsListScreen';
 import { ProfilesListScreen } from '@/screens/profiles/ProfilesListScreen';
@@ -73,7 +73,7 @@ export function MainTabNavigator() {
           ),
         }}
       />
-      <Tab.Screen
+      {/* <Tab.Screen
         name="Dashboard"
         component={DashboardScreen}
         options={{
@@ -82,7 +82,7 @@ export function MainTabNavigator() {
             <Icon name="chart-line" color={color} size={size} />
           ),
         }}
-      />
+      /> */}
       <Tab.Screen
         name="Matches"
         component={MatchesListScreen}

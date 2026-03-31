@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import type { Squad } from '@/types';
-import { getSportTypeIcon } from '@/constants/sport.constants';
+import { getSportTypeIcon, getSportTypeLabel } from '@/constants/sport.constants';
 
 interface SquadSelectorProps {
   squads: Squad[];
@@ -34,6 +34,7 @@ export function SquadSelector({
       {squads.map((squad) => {
         const isSelected = selected === squad.id;
         const iconName = getSportTypeIcon(squad.sport_type);
+        const sportLabel = getSportTypeLabel(squad.sport_type);
         
         return (
           <TouchableOpacity
@@ -56,6 +57,9 @@ export function SquadSelector({
             <View className="flex-1">
               <Text className="text-sm font-medium text-gray-800 dark:text-gray-200">
                 {squad.name}
+              </Text>
+              <Text className="text-xs text-indigo-500 dark:text-indigo-400 font-medium">
+                {sportLabel}
               </Text>
               {squad.team_name && (
                 <Text className="text-xs text-gray-500 dark:text-gray-400">

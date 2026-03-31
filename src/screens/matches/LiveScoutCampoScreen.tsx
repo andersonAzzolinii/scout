@@ -37,11 +37,17 @@ interface BenchPlayerCardProps {
   onPress: () => void;
   isSelected?: boolean;
   expanded?: boolean;
+  playerEvents?: MatchEvent[];
 }
 
-function BenchPlayerCard({ playerName, playerNumber, photoUri, onPress, isSelected, expanded }: BenchPlayerCardProps) {
+function BenchPlayerCard({ playerName, playerNumber, photoUri, onPress, isSelected, expanded, playerEvents = [] }: BenchPlayerCardProps) {
+  const negativeCount = playerEvents.filter(e => !e.is_positive).length;
+  const positiveCount = playerEvents.filter(e => e.is_positive).length;
+  const yellowCards = playerEvents.filter(e => e.event_id === 'cartao_amarelo' || e.event_name?.toLowerCase().includes('amarelo')).length;
+  const redCards = playerEvents.filter(e => e.event_id === 'cartao_vermelho' || e.event_name?.toLowerCase().includes('vermelho')).length;
+
   return (
-    <View className="items-center">
+    <View style={{ alignItems: 'center' }}>
       <TouchableOpacity
         onPress={onPress}
         style={{
@@ -54,13 +60,41 @@ function BenchPlayerCard({ playerName, playerNumber, photoUri, onPress, isSelect
           borderColor: isSelected ? '#818cf8' : 'transparent',
         }}
       >
-        <PlayerAvatar
-          photoUri={photoUri}
-          playerNumber={playerNumber ?? 0}
-          size={64}
-        />
-        <Text className="text-white text-xs mt-1 font-medium" numberOfLines={1}>
-          {(playerName ?? 'Sem nome').split(' ')[0]}
+        <View style={{ position: 'relative' }}>
+          <PlayerAvatar
+            photoUri={photoUri}
+            playerNumber={playerNumber ?? 0}
+            size={64}
+          />
+          {negativeCount > 0 && (
+            <View style={{ position: 'absolute', top: -4, left: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1, borderColor: '#fff' }}>
+              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>{negativeCount}</Text>
+            </View>
+          )}
+          {positiveCount > 0 && (
+            <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#16a34a', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1, borderColor: '#fff' }}>
+              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>{positiveCount}</Text>
+            </View>
+          )}
+        </View>
+        {(yellowCards > 0 || redCards > 0) && (
+          <View style={{ flexDirection: 'row', gap: 4, marginTop: 4, alignItems: 'center' }}>
+            {yellowCards > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                <View style={{ width: 10, height: 14, backgroundColor: '#eab308', borderRadius: 2, borderWidth: 1, borderColor: '#fbbf24' }} />
+                {yellowCards > 1 && <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '800' }}>×{yellowCards}</Text>}
+              </View>
+            )}
+            {redCards > 0 && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                <View style={{ width: 10, height: 14, backgroundColor: '#ef4444', borderRadius: 2, borderWidth: 1, borderColor: '#f87171' }} />
+                {redCards > 1 && <Text style={{ color: '#f87171', fontSize: 9, fontWeight: '800' }}>×{redCards}</Text>}
+              </View>
+            )}
+          </View>
+        )}
+        <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
+          {playerName ?? 'Sem nome'}
         </Text>
       </TouchableOpacity>
     </View>
@@ -113,6 +147,8 @@ export function LiveScoutCampoScreen() {
 
   // Custom hooks for timer
   const { isRunning, elapsed, period, toggleTimer, markHalfTime, markFullTime } = useMatchTimer();
+  const isRunningRef = useRef(isRunning);
+  useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
   // Load match data
   useEffect(() => {
     const match = matchRepo.getMatchById(matchId);
@@ -223,6 +259,43 @@ export function LiveScoutCampoScreen() {
     });
     return () => subscription.remove();
   }, [showEventsModal, isRunning, toggleTimer]);
+
+  // Salvar elapsed dos jogadores em campo ao sair da tela (blur/unmount)
+  // e restaurar corretamente ao voltar (focus), sem contar o tempo fora
+  useEffect(() => {
+    const handleBlur = () => {
+      const now = Date.now();
+      Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
+        // Só salva se ainda não estiver pausado (timer estava rodando)
+        if (fieldPausedElapsed.current[playerId] === undefined) {
+          const elapsedSec = Math.max(0, Math.floor((now - (fieldStartTimestamps.current[playerId] ?? now)) / 1000));
+          fieldPausedElapsed.current[playerId] = elapsedSec;
+          fieldRepo.updateActiveFieldPausedElapsed(matchId, playerId, elapsedSec);
+        }
+      });
+    };
+
+    const handleFocus = () => {
+      // Se o timer estava rodando, ajustar timestamps para não contar tempo fora
+      if (!isRunningRef.current) return;
+      const now = Date.now();
+      Object.keys(fieldPausedElapsed.current).forEach((playerId) => {
+        const savedElapsed = fieldPausedElapsed.current[playerId];
+        fieldStartTimestamps.current[playerId] = now - savedElapsed * 1000;
+        fieldRepo.updateActiveFieldPausedElapsed(matchId, playerId, null);
+      });
+      fieldPausedElapsed.current = {};
+      setFieldTick(t => t + 1);
+    };
+
+    const unsubBlur = navigation.addListener('blur', handleBlur);
+    const unsubFocus = navigation.addListener('focus', handleFocus);
+    return () => {
+      handleBlur(); // Salvar também ao desmontar o componente
+      unsubBlur();
+      unsubFocus();
+    };
+  }, [navigation, matchId]);
 
   // Animate events modal
   useEffect(() => {
@@ -782,6 +855,7 @@ export function LiveScoutCampoScreen() {
                   onPress={() => handleBenchPlayerClick(player)}
                   isSelected={selectedPlayerFromBench?.player_id === player.player_id}
                   expanded={true}
+                  playerEvents={getPlayerEvents(player.player_id)}
                 />
               ))}
             </ScrollView>
@@ -1093,6 +1167,7 @@ export function LiveScoutCampoScreen() {
                       playerNumber={player.player_number ?? null}
                       photoUri={player.photo_uri ?? null}
                       onPress={() => handleSwapPlayer(player)}
+                      playerEvents={getPlayerEvents(player.player_id)}
                     />
                   ))}
                 </View>
