@@ -27,12 +27,19 @@ export function TeamDetailScreen() {
   const [showSquadModal, setShowSquadModal] = useState(false);
   const [editSquad, setEditSquad] = useState<Squad | null>(null);
   const [viewMode, setViewMode] = useState<'squads' | 'players'>('squads');
-  const [expandedSquads, setExpandedSquads] = useState<Set<string>>(new Set());
+  const [expandedSquads, setExpandedSquads] = useState<Set<string>>(new Set(['no-squad']));
 
   useEffect(() => { 
     loadPlayers(teamId); 
     loadSquadsWithStats(teamId);
   }, [teamId]);
+
+  // Auto-switch to players view when there are players but no squads
+  useEffect(() => {
+    if (squads.length === 0 && players.length > 0) {
+      setViewMode('players');
+    }
+  }, [squads, players]);
 
   const toggleSquad = (squadId: string) => {
     setExpandedSquads((prev) => {
@@ -46,9 +53,11 @@ export function TeamDetailScreen() {
     });
   };
 
-  // Agrupar jogadores por squad
+  // Agrupar jogadores por squad (jogadores com squad_id inválido vão para 'no-squad')
+  const squadIds = new Set(squads.map(s => s.id));
   const playersBySquad = players.reduce((acc, player) => {
-    const key = player.squad_id || 'no-squad';
+    const hasValidSquad = player.squad_id && squadIds.has(player.squad_id);
+    const key = hasValidSquad ? player.squad_id! : 'no-squad';
     if (!acc[key]) acc[key] = [];
     acc[key].push(player);
     return acc;
