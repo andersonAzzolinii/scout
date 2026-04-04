@@ -1290,7 +1290,7 @@ export function LiveScoutSocietyScreen() {
                 });
             return (
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10 }}>
-                <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 6 }}>Quadra:</Text>
+                <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 6, width: 48 }}>Quadra:</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6, alignItems: 'center', flexDirection: 'row' }}>
                   {chips}
                 </ScrollView>
@@ -1352,7 +1352,7 @@ export function LiveScoutSocietyScreen() {
                 });
             return (
               <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 10 }}>
-                <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 6 }}>Banco:</Text>
+                <Text style={{ color: '#6b7280', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginRight: 6, width: 48 }}>Banco:</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={{ gap: 6, alignItems: 'center', flexDirection: 'row' }}>
                   {chips}
                 </ScrollView>
