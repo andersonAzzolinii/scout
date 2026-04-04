@@ -60,8 +60,12 @@ export function LiveScoutCampoScreen() {
   const [selectedPlayerFromBench, setSelectedPlayerFromBench] = useState<typeof matchPlayers[0] | null>(null);
   const [showEventsModal, setShowEventsModal] = useState(false);
   const [showSwapPanel, setShowSwapPanel] = useState(false);
+  const [benchExpanded, setBenchExpanded] = useState(false);
   // wall-clock timestamps (ms) when each player entered the field
   const fieldStartTimestamps = useRef<Record<string, number>>({});
+  // Animation for bench panel
+  const benchPanelHeight = useRef(new Animated.Value(0)).current;
+  const benchPanelOpacity = useRef(new Animated.Value(0)).current;
   // elapsed seconds when timer was paused for each field player
   const fieldPausedElapsed = useRef<Record<string, number>>({});
   // elapsed acumulado quando mudou de período (para manter tempo contínuo)
@@ -172,9 +176,22 @@ export function LiveScoutCampoScreen() {
     return () => subscription.remove();
   }, [showEventsModal]);
 
+  // Close bench panel on hardware back button
+  useEffect(() => {
+    if (!benchExpanded) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setBenchExpanded(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [benchExpanded]);
+
   // Pause timer when back button is pressed
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      // Se o painel de reservas está aberto, deixar o outro handler lidar
+      if (benchExpanded) return false;
+      
       // Se o modal está aberto, deixar o outro handler lidar
       if (showEventsModal) return false;
       
@@ -188,7 +205,7 @@ export function LiveScoutCampoScreen() {
       return false;
     });
     return () => subscription.remove();
-  }, [showEventsModal, isRunning, toggleTimer]);
+  }, [benchExpanded, showEventsModal, isRunning, toggleTimer]);
 
   // Salvar elapsed dos jogadores em campo ao sair da tela (blur/unmount)
   // e restaurar corretamente ao voltar (focus), sem contar o tempo fora
@@ -256,6 +273,38 @@ export function LiveScoutCampoScreen() {
       setShowSwapPanel(false);
     }
   }, [period, showEventsModal]);
+
+  // Animate bench panel
+  useEffect(() => {
+    if (benchExpanded) {
+      Animated.parallel([
+        Animated.spring(benchPanelHeight, {
+          toValue: 1,
+          tension: 80,
+          friction: 12,
+          useNativeDriver: false,
+        }),
+        Animated.timing(benchPanelOpacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(benchPanelHeight, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(benchPanelOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [benchExpanded]);
 
   // Quando a partida inicia (period: 0→1) ou retoma o 2º tempo, iniciar field periods
   // dos jogadores posicionados que ainda não têm period ativo
@@ -754,160 +803,151 @@ export function LiveScoutCampoScreen() {
       })()}
 
       {/* ─── Main Content ──────────────────────────────────────────────────────── */}
-      <View className="flex-1 flex-row">
+      <View className="flex-1">
+        <View className="flex-1 flex-row">
 
-        {/* Left: Bench Players (hidden when event panels open) */}
-        <BenchPanel
-          availablePlayers={availablePlayers}
-          selectedPlayerFromBench={selectedPlayerFromBench}
-          showEventsModal={showEventsModal}
-          onPlayerClick={handleBenchPlayerClick}
-          onCancelSelection={() => setSelectedPlayerFromBench(null)}
-          getPlayerEvents={getPlayerEvents}
-        />
-
-        {/* Left: Negative Events Panel */}
-        {showEventsModal && live.selectedPlayerId && period > 0 && (
-          <View style={{ width: 140, backgroundColor: '#0a0d14', borderRightWidth: 1, borderRightColor: '#1f2937' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(239,68,68,0.07)' : 'rgba(251,191,36,0.10)' }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#ef4444' : '#fbbf24' }} />
-              <Text style={{ color: isRunning ? '#f87171' : '#fbbf24', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>Erros</Text>
-              {!isRunning && (
-                <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                  <Icon name="pause" size={9} color="#fbbf24" />
-                </View>
-              )}
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {categories.map((category) => {
-                const catEvents = filteredEvents.filter(e => e.category_id === category.id && !e.is_positive);
-                if (catEvents.length === 0) return null;
-                return (
-                  <View key={category.id}>
-                    <Text style={{ color: '#4b5563', fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
-                      {category.name}
-                    </Text>
-                    {catEvents.map((evt) => (
-                      <TouchableOpacity
-                        key={evt.id}
-                        onPress={() => handleEventPress(evt)}
-                        activeOpacity={0.55}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(239,68,68,0.04)' }}
-                      >
-                        <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexShrink: 0 }}>
-                          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
-                        </View>
-                        <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
-                          {evt.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+          {/* Left: Negative Events Panel */}
+          {showEventsModal && live.selectedPlayerId && period > 0 && (
+            <View style={{ width: 140, backgroundColor: '#0a0d14', borderRightWidth: 1, borderRightColor: '#1f2937' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(239,68,68,0.07)' : 'rgba(251,191,36,0.10)' }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#ef4444' : '#fbbf24' }} />
+                <Text style={{ color: isRunning ? '#f87171' : '#fbbf24', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>Erros</Text>
+                {!isRunning && (
+                  <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                    <Icon name="pause" size={9} color="#fbbf24" />
                   </View>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* Center: Court */}
-        <View className="flex-1 justify-center items-center">
-          <CourtRenderer
-            sportType={sportType as any}
-            width={Math.min(
-              (screenWidth - (showEventsModal && live.selectedPlayerId ? 280 : (availablePlayers.length > 0 ? 120 : 0))) * 0.96,
-              (screenHeight - insets.top - 130) * (2 / 3)
-            )}
-            onPositionPress={handlePositionPress}
-            positionedPlayers={positionedPlayers}
-            onPlayerPress={handlePlayerPress}
-            selectedPlayerId={live.selectedPlayerId}
-            getPlayerEvents={getPlayerEvents}
-            getFieldStartTs={(playerId) => {
-              // Não contar tempo se a partida ainda não começou
-              if (period === 0) return undefined;
-              
-              // Se pausado, usar o timestamp ajustado; senão usar o real
-              if (!isRunning && fieldPausedElapsed.current[playerId] !== undefined) {
-                return Date.now() - fieldPausedElapsed.current[playerId] * 1000;
-              }
-              return fieldStartTimestamps.current[playerId];
-            }}
-            isTimerRunning={isRunning}
-            showEventsModal={showEventsModal}
-          />
-        </View>
-
-        {/* Right: Positive Events Panel */}
-        {showEventsModal && live.selectedPlayerId && period > 0 && (
-          <View style={{ width: 140, backgroundColor: '#0a0d14', borderLeftWidth: 1, borderLeftColor: '#1f2937' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(34,197,94,0.07)' : 'rgba(251,191,36,0.10)' }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#22c55e' : '#fbbf24' }} />
-              <Text style={{ color: isRunning ? '#4ade80' : '#fbbf24', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>Acertos</Text>
-              {!isRunning && (
-                <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                  <Icon name="pause" size={9} color="#fbbf24" />
-                </View>
-              )}
+                )}
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {categories.map((category) => {
+                  const catEvents = filteredEvents.filter(e => e.category_id === category.id && !e.is_positive);
+                  if (catEvents.length === 0) return null;
+                  return (
+                    <View key={category.id}>
+                      <Text style={{ color: '#4b5563', fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
+                        {category.name}
+                      </Text>
+                      {catEvents.map((evt) => (
+                        <TouchableOpacity
+                          key={evt.id}
+                          onPress={() => handleEventPress(evt)}
+                          activeOpacity={0.55}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(239,68,68,0.04)' }}
+                        >
+                          <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexShrink: 0 }}>
+                            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
+                          </View>
+                          <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
+                            {evt.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  );
+                })}
+              </ScrollView>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {categories.map((category) => {
-                const catEvents = filteredEvents.filter(e => e.category_id === category.id && e.is_positive);
-                if (catEvents.length === 0) return null;
-                return (
-                  <View key={category.id}>
-                    <Text style={{ color: '#4b5563', fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
-                      {category.name}
-                    </Text>
-                    {catEvents.map((evt) => (
-                      <TouchableOpacity
-                        key={evt.id}
-                        onPress={() => handleEventPress(evt)}
-                        activeOpacity={0.55}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(34,197,94,0.04)' }}
-                      >
-                        <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', flexShrink: 0 }}>
-                          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e' }} />
-                        </View>
-                        <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
-                          {evt.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                );
-              })}
-            </ScrollView>
-          </View>
-        )}
+          )}
 
-        {/* Player Selection Popover */}
-        {selectedPositionSlot && availablePlayers.length > 0 && !selectedPlayerFromBench && (
-          <Popover
-            visible={true}
-            x={selectedPositionSlot.screenX}
-            y={selectedPositionSlot.screenY}
-            onClose={() => setSelectedPositionSlot(null)}
-          >
-            <Text className="text-gray-400 text-xs mb-2 px-3 pt-2">Selecione um jogador:</Text>
-            <ScrollView
-              horizontal
-              className="px-3 pb-2"
-              showsHorizontalScrollIndicator={false}
+          {/* Center: Court */}
+          <View className="flex-1 justify-center items-center">
+            <CourtRenderer
+              sportType={sportType as any}
+              width={Math.min(
+                (screenWidth - (showEventsModal && live.selectedPlayerId ? 280 : 0)) * 0.96,
+                (screenHeight - insets.top - 130) * (2 / 3)
+              )}
+              onPositionPress={handlePositionPress}
+              positionedPlayers={positionedPlayers}
+              onPlayerPress={handlePlayerPress}
+              selectedPlayerId={live.selectedPlayerId}
+              getPlayerEvents={getPlayerEvents}
+              getFieldStartTs={(playerId) => {
+                // Não contar tempo se a partida ainda não começou
+                if (period === 0) return undefined;
+                
+                // Se pausado, usar o timestamp ajustado; senão usar o real
+                if (!isRunning && fieldPausedElapsed.current[playerId] !== undefined) {
+                  return Date.now() - fieldPausedElapsed.current[playerId] * 1000;
+                }
+                return fieldStartTimestamps.current[playerId];
+              }}
+              isTimerRunning={isRunning}
+              showEventsModal={showEventsModal}
+            />
+          </View>
+
+          {/* Right: Positive Events Panel */}
+          {showEventsModal && live.selectedPlayerId && period > 0 && (
+            <View style={{ width: 140, backgroundColor: '#0a0d14', borderLeftWidth: 1, borderLeftColor: '#1f2937' }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(34,197,94,0.07)' : 'rgba(251,191,36,0.10)' }}>
+                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#22c55e' : '#fbbf24' }} />
+                <Text style={{ color: isRunning ? '#4ade80' : '#fbbf24', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 }}>Acertos</Text>
+                {!isRunning && (
+                  <View style={{ marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                    <Icon name="pause" size={9} color="#fbbf24" />
+                  </View>
+                )}
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {categories.map((category) => {
+                  const catEvents = filteredEvents.filter(e => e.category_id === category.id && e.is_positive);
+                  if (catEvents.length === 0) return null;
+                  return (
+                    <View key={category.id}>
+                      <Text style={{ color: '#4b5563', fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
+                        {category.name}
+                      </Text>
+                      {catEvents.map((evt) => (
+                        <TouchableOpacity
+                          key={evt.id}
+                          onPress={() => handleEventPress(evt)}
+                          activeOpacity={0.55}
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(34,197,94,0.04)' }}
+                        >
+                          <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', flexShrink: 0 }}>
+                            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e' }} />
+                          </View>
+                          <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
+                            {evt.name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Player Selection Popover */}
+          {selectedPositionSlot && availablePlayers.length > 0 && !selectedPlayerFromBench && (
+            <Popover
+              visible={true}
+              x={selectedPositionSlot.screenX}
+              y={selectedPositionSlot.screenY}
+              onClose={() => setSelectedPositionSlot(null)}
             >
-              <View className="flex-row gap-3 items-center">
-                {availablePlayers.map((player) => (
-                  <BenchPlayerCard
-                    key={player.player_id}
-                    playerName={player.player_name ?? null}
-                    playerNumber={player.player_number ?? null}
-                    photoUri={player.photo_uri ?? null}
-                    onPress={() => handlePlayerSelect(player)}
-                  />
-                ))}
-                <TouchableOpacity
-                  onPress={() => setSelectedPositionSlot(null)}
-                  className="bg-gray-700 rounded-lg px-5 py-5 items-center justify-center min-w-[100px]"
-                >
+              <Text className="text-gray-400 text-xs mb-2 px-3 pt-2">Selecione um jogador:</Text>
+              <ScrollView
+                horizontal
+                className="px-3 pb-2"
+                showsHorizontalScrollIndicator={false}
+              >
+                <View className="flex-row gap-3 items-center">
+                  {availablePlayers.map((player) => (
+                    <BenchPlayerCard
+                      key={player.player_id}
+                      playerName={player.player_name ?? null}
+                      playerNumber={player.player_number ?? null}
+                      photoUri={player.photo_uri ?? null}
+                      onPress={() => handlePlayerSelect(player)}
+                    />
+                  ))}
+                  <TouchableOpacity
+                    onPress={() => setSelectedPositionSlot(null)}
+                    className="bg-gray-700 rounded-lg px-5 py-5 items-center justify-center min-w-[100px]"
+                  >
                   <Text className="text-gray-300 text-sm">Cancelar</Text>
                 </TouchableOpacity>
               </View>
@@ -915,6 +955,92 @@ export function LiveScoutCampoScreen() {
           </Popover>
         )}
 
+        </View>
+
+        {/* Bottom: Bench Players (minimizable) */}
+        {availablePlayers.length > 0 && !showEventsModal && (
+          <View style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 10
+          }}>
+            {benchExpanded && (
+              <Pressable 
+                style={{
+                  position: 'absolute',
+                  top: -1000,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0,0,0,0.5)'
+                }}
+                onPress={() => setBenchExpanded(false)}
+              />
+            )}
+            {benchExpanded && (
+              <View style={{ 
+                backgroundColor: '#0a0d14', 
+                borderTopWidth: 1, 
+                borderTopColor: '#1f2937', 
+                paddingBottom: insets.bottom,
+                overflow: 'hidden'
+              }}>
+                <Animated.View style={{
+                  height: benchPanelHeight.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 220]
+                  })
+                }}>
+                  <Animated.View style={{ opacity: benchPanelOpacity }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1f2937' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Icon name="account-multiple" size={16} color="#9ca3af" />
+                        <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700' }}>Reservas ({availablePlayers.length})</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setBenchExpanded(false)} style={{ padding: 4 }}>
+                        <Icon name="chevron-down" size={20} color="#9ca3af" />
+                      </TouchableOpacity>
+                    </View>
+                    <BenchPanel
+                      availablePlayers={availablePlayers}
+                      selectedPlayerFromBench={selectedPlayerFromBench}
+                      showEventsModal={showEventsModal}
+                      onPlayerClick={handleBenchPlayerClick}
+                      onCancelSelection={() => setSelectedPlayerFromBench(null)}
+                      getPlayerEvents={getPlayerEvents}
+                      orientation="horizontal"
+                    />
+                  </Animated.View>
+                </Animated.View>
+              </View>
+            )}
+            {!benchExpanded && (
+              <TouchableOpacity
+                onPress={() => setBenchExpanded(true)}
+                style={{ 
+                  backgroundColor: '#0a0d14', 
+                  borderTopWidth: 1, 
+                  borderTopColor: '#374151',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  paddingBottom: insets.bottom + 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8
+                }}
+              >
+                <Icon name="account-multiple" size={18} color="#60a5fa" />
+                <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '700' }}>
+                  Reservas ({availablePlayers.length})
+                </Text>
+                <Icon name="chevron-up" size={18} color="#60a5fa" />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
 
       {/* ─── Bottom Action Bar ─────────────────────────────────────────────────── */}

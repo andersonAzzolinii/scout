@@ -146,6 +146,8 @@ interface BenchPanelProps {
   getBenchStartTs?: (playerId: string) => number | undefined;
   getPausedElapsed?: (playerId: string) => number | undefined;
   isTimerRunning?: boolean;
+  // Layout
+  orientation?: 'vertical' | 'horizontal';
 }
 
 export function BenchPanel({
@@ -158,12 +160,65 @@ export function BenchPanel({
   getBenchStartTs,
   getPausedElapsed,
   isTimerRunning = false,
+  orientation = 'vertical',
 }: BenchPanelProps) {
   // Não renderizar se lista vazia ou se o modal de eventos estiver aberto
   if (availablePlayers.length === 0 || showEventsModal) {
     return null;
   }
 
+  // Layout horizontal (embaixo da quadra)
+  if (orientation === 'horizontal') {
+    return (
+      <View style={{ borderTopWidth: 1, borderTopColor: '#1f2937', backgroundColor: '#0b1120' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}>
+          <Text style={{ color: '#6b7280', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
+            RESERVAS ({availablePlayers.length})
+          </Text>
+          {selectedPlayerFromBench && (
+            <TouchableOpacity
+              onPress={onCancelSelection}
+              style={{ backgroundColor: '#374151', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}
+            >
+              <Text style={{ color: '#d1d5db', fontSize: 9 }}>Cancelar seleção</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        
+        {selectedPlayerFromBench && (
+          <View style={{ paddingHorizontal: 12, paddingBottom: 4 }}>
+            <Text style={{ color: '#818cf8', fontSize: 9 }}>
+              #{selectedPlayerFromBench.player_number} {selectedPlayerFromBench.player_name} - Toque na quadra para posicionar
+            </Text>
+          </View>
+        )}
+
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 8, flexDirection: 'row' }}
+        >
+          {availablePlayers.map((player) => (
+            <BenchPlayerCard
+              key={player.player_id}
+              playerName={player.player_name}
+              playerNumber={player.player_number}
+              photoUri={player.photo_uri}
+              onPress={() => onPlayerClick(player)}
+              isSelected={selectedPlayerFromBench?.player_id === player.player_id}
+              expanded={false}
+              playerEvents={getPlayerEvents?.(player.player_id)}
+              benchStartTs={getBenchStartTs?.(player.player_id)}
+              pausedElapsed={getPausedElapsed?.(player.player_id)}
+              isTimerRunning={isTimerRunning}
+            />
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // Layout vertical (lateral - legado)
   return (
     <View style={{ width: 112, borderRightWidth: 1, borderRightColor: '#1f2937', backgroundColor: '#0b1120' }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingTop: 8, paddingBottom: 4 }}>

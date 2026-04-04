@@ -63,6 +63,7 @@ export function LiveScoutSocietyScreen() {
   const [selectedPlayerFromBench, setSelectedPlayerFromBench] = useState<typeof matchPlayers[0] | null>(null);
   const [showEventsModal, setShowEventsModal] = useState(false);
   const [showSwapPanel, setShowSwapPanel] = useState(false);
+  const [benchExpanded, setBenchExpanded] = useState(false);
   // wall-clock timestamps (ms) when each player entered the bench
   const benchStartTimestamps = useRef<Record<string, number>>({});
   // elapsed seconds when timer was paused for each bench player
@@ -83,6 +84,9 @@ export function LiveScoutSocietyScreen() {
   // Animation for events modal
   const modalScaleAnim = React.useRef(new Animated.Value(0)).current;
   const modalOpacityAnim = React.useRef(new Animated.Value(0)).current;
+  // Animation for bench panel
+  const benchPanelHeight = useRef(new Animated.Value(0)).current;
+  const benchPanelOpacity = useRef(new Animated.Value(0)).current;
 
   // Custom hooks for timer and bench panel
   const { isRunning, elapsed, period, toggleTimer, markHalfTime, markFullTime } = useMatchTimer();
@@ -199,6 +203,16 @@ export function LiveScoutSocietyScreen() {
     return () => clearInterval(interval);
   }, []);
 
+  // Close bench panel on hardware back button
+  useEffect(() => {
+    if (!benchExpanded) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setBenchExpanded(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [benchExpanded]);
+
   // Close events modal on hardware back button
   useEffect(() => {
     if (!showEventsModal) return;
@@ -238,6 +252,38 @@ export function LiveScoutSocietyScreen() {
       setShowSwapPanel(false);
     }
   }, [period, showEventsModal]);
+
+  // Animate bench panel
+  useEffect(() => {
+    if (benchExpanded) {
+      Animated.parallel([
+        Animated.spring(benchPanelHeight, {
+          toValue: 1,
+          tension: 80,
+          friction: 12,
+          useNativeDriver: false,
+        }),
+        Animated.timing(benchPanelOpacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(benchPanelHeight, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(benchPanelOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [benchExpanded]);
 
   // Quando a partida inicia (period: 0→1) ou retoma o 2º tempo, iniciar field periods
   // dos jogadores posicionados que ainda não têm period ativo
@@ -838,21 +884,10 @@ export function LiveScoutSocietyScreen() {
       })()}
 
       {/* ─── Main Content ──────────────────────────────────────────────────────── */}
-      <View className="flex-1 flex-row">
+      <View className="flex-1">
+        <View className="flex-1 flex-row">
 
-        {/* Left: Bench Players (hidden when event panels open) */}
-        <BenchPanel
-          availablePlayers={availablePlayers}
-          selectedPlayerFromBench={selectedPlayerFromBench}
-          showEventsModal={showEventsModal}
-          onPlayerClick={() => {}}
-          onCancelSelection={() => setSelectedPlayerFromBench(null)}
-          getBenchStartTs={(playerId) => benchStartTimestamps.current[playerId]}
-          getPausedElapsed={(playerId) => benchPausedElapsed.current[playerId]}
-          isTimerRunning={isRunning}
-        />
-
-        {/* Left: Negative Events Panel */}
+          {/* Left: Negative Events Panel */}
         {showEventsModal && live.selectedPlayerId && period > 0 && (
           <View style={{ width: 140, backgroundColor: '#0a0d14', borderRightWidth: 1, borderRightColor: '#1f2937' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(239,68,68,0.07)' : 'rgba(251,191,36,0.10)' }}>
@@ -900,7 +935,7 @@ export function LiveScoutSocietyScreen() {
           <CourtRenderer
             sportType={sportType as any}
             width={Math.min(
-              (screenWidth - (showEventsModal && live.selectedPlayerId ? 280 : (availablePlayers.length > 0 ? 120 : 0))) * 0.96,
+              (screenWidth - (showEventsModal && live.selectedPlayerId ? 280 : 0)) * 0.96,
               (screenHeight - insets.top - 130) * (2 / 3)
             )}
             onPositionPress={handlePositionPress}
@@ -1004,6 +1039,94 @@ export function LiveScoutSocietyScreen() {
           </Popover>
         )}
 
+        </View>
+
+        {/* Bottom: Bench Players (minimizable) */}
+        {availablePlayers.length > 0 && !showEventsModal && (
+          <View style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 10
+          }}>
+            {benchExpanded && (
+              <Pressable 
+                style={{
+                  position: 'absolute',
+                  top: -1000,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0,0,0,0.5)'
+                }}
+                onPress={() => setBenchExpanded(false)}
+              />
+            )}
+            {benchExpanded && (
+              <View style={{ 
+                backgroundColor: '#0a0d14', 
+                borderTopWidth: 1, 
+                borderTopColor: '#1f2937', 
+                paddingBottom: insets.bottom,
+                overflow: 'hidden'
+              }}>
+                <Animated.View style={{
+                  height: benchPanelHeight.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 220]
+                  })
+                }}>
+                  <Animated.View style={{ opacity: benchPanelOpacity }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1f2937' }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        <Icon name="account-multiple" size={16} color="#9ca3af" />
+                        <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700' }}>Reservas ({availablePlayers.length})</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setBenchExpanded(false)} style={{ padding: 4 }}>
+                        <Icon name="chevron-down" size={20} color="#9ca3af" />
+                      </TouchableOpacity>
+                    </View>
+                    <BenchPanel
+                      availablePlayers={availablePlayers}
+                      selectedPlayerFromBench={selectedPlayerFromBench}
+                      showEventsModal={showEventsModal}
+                      onPlayerClick={() => {}}
+                      onCancelSelection={() => setSelectedPlayerFromBench(null)}
+                      getBenchStartTs={(playerId) => benchStartTimestamps.current[playerId]}
+                      getPausedElapsed={(playerId) => benchPausedElapsed.current[playerId]}
+                      isTimerRunning={isRunning}
+                      orientation="horizontal"
+                    />
+                  </Animated.View>
+                </Animated.View>
+              </View>
+            )}
+            {!benchExpanded && (
+              <TouchableOpacity
+                onPress={() => setBenchExpanded(true)}
+                style={{ 
+                  backgroundColor: '#0a0d14', 
+                  borderTopWidth: 1, 
+                  borderTopColor: '#374151',
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                  paddingBottom: insets.bottom + 8,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8
+                }}
+              >
+                <Icon name="account-multiple" size={18} color="#60a5fa" />
+                <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '700' }}>
+                  Reservas ({availablePlayers.length})
+                </Text>
+                <Icon name="chevron-up" size={18} color="#60a5fa" />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
 
       {/* ─── Bottom Action Bar ─────────────────────────────────────────────────── */}
