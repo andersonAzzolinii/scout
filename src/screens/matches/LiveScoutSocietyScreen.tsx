@@ -1019,6 +1019,7 @@ export function LiveScoutSocietyScreen() {
               return fieldStartTimestamps.current[playerId];
             }}
             isTimerRunning={isRunning}
+            showEventsModal={showEventsModal}
           />
         </View>
 

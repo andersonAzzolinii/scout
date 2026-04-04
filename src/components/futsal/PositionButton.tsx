@@ -124,25 +124,6 @@ export function PositionButton({
 
   return (
     <>
-      {isSelected && (
-        <View
-          style={{
-            position: 'absolute',
-            left: screenX - halfSize - 10,
-            top: screenY - halfSize - 10,
-            width: currentSize + 20,
-            height: currentSize + 20,
-            borderRadius: (currentSize + 20) / 2,
-            backgroundColor: 'rgba(255, 255, 255, 0.15)',
-            shadowColor: '#e5e7eb',
-            shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 1,
-            shadowRadius: 14,
-            elevation: 10,
-          }}
-        />
-      )}
-
       <TouchableOpacity
         onPress={handlePress}
         style={[
@@ -152,15 +133,6 @@ export function PositionButton({
             top: screenY - halfSize,
             width: currentSize,
             height: currentSize,
-            backgroundColor: isSelected ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
-            borderRadius: currentSize / 2,
-            borderWidth: isSelected ? 3 : 0,
-            borderColor: '#f3f4f6',
-            shadowColor: isSelected ? '#e5e7eb' : 'transparent',
-            shadowOffset: { width: 0, height: isSelected ? 6 : 0 },
-            shadowOpacity: isSelected ? 0.7 : 0,
-            shadowRadius: isSelected ? 12 : 0,
-            elevation: isSelected ? 12 : 0,
           },
         ]}
       >
@@ -171,6 +143,7 @@ export function PositionButton({
                 photoUri={player.photo_uri}
                 playerNumber={player.player_number ?? 0}
                 size={currentSize}
+                isSelected={isSelected}
               />
               {negativeEventsCount > 0 && (
                 <View style={{ position: 'absolute', top: -4, left: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1, borderColor: '#ffffff' }}>
@@ -221,6 +194,7 @@ export function PositionButton({
             playerNumber={0}
             size={currentSize}
             forceJersey={true}
+            isSelected={isSelected}
           />
         )}
       </TouchableOpacity>

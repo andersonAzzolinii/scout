@@ -16,6 +16,7 @@ interface CampoCourtProps {
   getPlayerEvents?: (playerId: string) => MatchEvent[];
   getFieldStartTs?: (playerId: string) => number | undefined;
   isTimerRunning?: boolean;
+  showEventsModal?: boolean;
 }
 
 /**
@@ -30,6 +31,7 @@ export function CampoCourt({
   getPlayerEvents,
   getFieldStartTs,
   isTimerRunning,
+  showEventsModal = false,
 }: CampoCourtProps) {
   const height = useMemo(() => width / SVG_ASPECT_RATIO, [width]);
 
@@ -61,7 +63,7 @@ export function CampoCourt({
             player={player?.player}
             onPress={onPositionPress || (() => {})}
             onPlayerPress={onPlayerPress}
-            isSelected={player?.player?.player_id === selectedPlayerId}
+            isSelected={showEventsModal && player?.player?.player_id === selectedPlayerId}
             playerEvents={player?.player ? getPlayerEvents?.(player.player.player_id) || [] : []}
             fieldStartTs={player?.player ? getFieldStartTs?.(player.player.player_id) : undefined}
             isTimerRunning={isTimerRunning}

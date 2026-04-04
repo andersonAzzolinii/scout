@@ -17,6 +17,7 @@ interface CourtRendererProps {
   getPlayerEvents?: (playerId: string) => MatchEvent[];
   getFieldStartTs?: (playerId: string) => number | undefined;
   isTimerRunning?: boolean;
+  showEventsModal?: boolean;
 }
 
 /**
@@ -33,6 +34,7 @@ export function CourtRenderer({
   getPlayerEvents,
   getFieldStartTs,
   isTimerRunning,
+  showEventsModal = false,
 }: CourtRendererProps) {
   // Props comuns para todos os tipos de quadra
   const commonProps = {
@@ -44,6 +46,7 @@ export function CourtRenderer({
     getPlayerEvents,
     getFieldStartTs,
     isTimerRunning,
+    showEventsModal,
   };
 
   switch (sportType) {
