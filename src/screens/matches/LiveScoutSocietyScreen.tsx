@@ -88,6 +88,8 @@ export function LiveScoutSocietyScreen() {
 
   // Custom hooks for timer and bench panel
   const { isRunning, elapsed, period, toggleTimer, markHalfTime, markFullTime } = useMatchTimer();
+  const isRunningRef = useRef(isRunning);
+  useEffect(() => { isRunningRef.current = isRunning; }, [isRunning]);
   const {
     isExpanded: isBenchExpanded,
     heightAnim: benchHeightAnim,
@@ -144,6 +146,57 @@ export function LiveScoutSocietyScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Salvar elapsed dos jogadores em campo e banco ao sair da tela (blur/unmount)
+  // e restaurar corretamente ao voltar (focus), sem contar o tempo fora
+  useEffect(() => {
+    const handleBlur = () => {
+      const now = Date.now();
+      // Congelar field timers
+      Object.keys(fieldStartTimestamps.current).forEach((playerId) => {
+        if (fieldPausedElapsed.current[playerId] === undefined) {
+          const elapsedSec = Math.max(0, Math.floor((now - (fieldStartTimestamps.current[playerId] ?? now)) / 1000));
+          fieldPausedElapsed.current[playerId] = elapsedSec;
+          fieldRepo.updateActiveFieldPausedElapsed(matchId, playerId, elapsedSec);
+        }
+      });
+      // Congelar bench timers
+      const saved: Record<string, number> = {};
+      Object.entries(benchStartTimestamps.current).forEach(([id, ts]) => {
+        const elapsedSec = Math.floor((now - ts) / 1000);
+        benchPausedElapsed.current[id] = elapsedSec;
+        saved[id] = elapsedSec;
+      });
+      if (Object.keys(saved).length > 0) saveBenchElapsed(saved);
+    };
+
+    const handleFocus = () => {
+      if (!isRunningRef.current) return;
+      const now = Date.now();
+      // Restaurar field timers
+      Object.keys(fieldPausedElapsed.current).forEach((playerId) => {
+        const savedElapsed = fieldPausedElapsed.current[playerId];
+        fieldStartTimestamps.current[playerId] = now - savedElapsed * 1000;
+        fieldRepo.updateActiveFieldPausedElapsed(matchId, playerId, null);
+      });
+      fieldPausedElapsed.current = {};
+      // Restaurar bench timers
+      Object.keys(benchPausedElapsed.current).forEach((id) => {
+        const savedElapsed = benchPausedElapsed.current[id];
+        benchStartTimestamps.current[id] = now - savedElapsed * 1000;
+      });
+      benchPausedElapsed.current = {};
+      setFieldTick(t => t + 1);
+    };
+
+    const unsubBlur = navigation.addListener('blur', handleBlur);
+    const unsubFocus = navigation.addListener('focus', handleFocus);
+    return () => {
+      handleBlur();
+      unsubBlur();
+      unsubFocus();
+    };
+  }, [navigation, matchId]);
 
   const match = live.match;
   const matchPlayers = live.players;
