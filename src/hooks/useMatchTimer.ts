@@ -2,7 +2,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useMatchStore } from '@/store/useMatchStore';
 
 /**
- * Custom hook for managing match timer
+ * Custom hook for managing match timer.
+ *
+ * Uses Date.now() for elapsed calculation so the match clock stays perfectly
+ * in sync with wall-clock based field/bench timers (no setInterval drift).
  */
 export function useMatchTimer() {
   const { live, setTimer, setPeriod: storePeriod } = useMatchStore();
@@ -11,60 +14,67 @@ export function useMatchTimer() {
   const [period, setPeriod] = useState<0 | 1 | 2>(live.period);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentMatchIdRef = useRef(live.match?.id);
-  const pausedElapsedRef = useRef<number | null>(null); // Captura elapsed no momento do pause para evitar race conditions
+
+  // Wall-clock anchor: Date.now() when the current running session started
+  const startTimeRef = useRef<number | null>(null);
+  // Seconds accumulated from previous running sessions within this period
+  const baseElapsedRef = useRef<number>(live.elapsedSeconds);
+
+  /** Calculate current elapsed from wall-clock */
+  const calcElapsed = useCallback(() => {
+    if (startTimeRef.current === null) return baseElapsedRef.current;
+    return baseElapsedRef.current + Math.floor((Date.now() - startTimeRef.current) / 1000);
+  }, []);
+
+  /** Start the interval that ticks UI every second */
+  const startTicking = useCallback(() => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      const now = calcElapsed();
+      setElapsed(now);
+      setTimer(now, true);
+    }, 1000);
+  }, [calcElapsed, setTimer]);
+
+  /** Stop the interval */
+  const stopTicking = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
   /**
    * Sincronizar estado local com o store quando a partida mudar
    */
   useEffect(() => {
     if (live.match?.id !== currentMatchIdRef.current) {
-      console.log(`[SYNC] Nova partida detectada - resetando timer. ID: ${live.match?.id}`);
-      // Nova partida - sincronizar estados
       currentMatchIdRef.current = live.match?.id;
       setElapsed(live.elapsedSeconds);
       setPeriod(live.period);
       setIsRunning(live.isRunning);
-      
-      // Limpar timer anterior
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-      
-      // Se o timer estava rodando, reiniciar
+      baseElapsedRef.current = live.elapsedSeconds;
+      stopTicking();
+
       if (live.isRunning) {
-        timerRef.current = setInterval(() => {
-          setElapsed((e) => {
-            const next = e + 1;
-            setTimer(next, true);
-            return next;
-          });
-        }, 1000);
+        startTimeRef.current = Date.now();
+        startTicking();
+      } else {
+        startTimeRef.current = null;
       }
     }
-    // Apenas sincronizar quando o ID da partida mudar, não quando período/elapsed mudarem
-  }, [live.match?.id, setTimer]);
+  }, [live.match?.id, live.elapsedSeconds, live.period, live.isRunning, stopTicking, startTicking]);
 
   /**
-   * On mount: if the timer was running when the screen was left, restart the interval
-   * so the counter resumes seamlessly.
+   * On mount: if the timer was running, anchor to Date.now() and start ticking.
    */
   useEffect(() => {
     if (live.isRunning && !timerRef.current) {
-      timerRef.current = setInterval(() => {
-        setElapsed((e) => {
-          const next = e + 1;
-          setTimer(next, true);
-          return next;
-        });
-      }, 1000);
+      baseElapsedRef.current = live.elapsedSeconds;
+      startTimeRef.current = Date.now();
+      startTicking();
     }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
-    // Intentionally runs only on mount — live values are captured as initial state
+    return () => stopTicking();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -73,91 +83,77 @@ export function useMatchTimer() {
    */
   const toggleTimer = useCallback(() => {
     if (isRunning) {
-      // Captura elapsed IMEDIATAMENTE para evitar race conditions
-      pausedElapsedRef.current = elapsed;
-      console.log(`[TOGGLE] Pausando timer - elapsed: ${elapsed}s, period: ${period}`);
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
+      // Pause: snapshot the current wall-clock elapsed
+      const currentElapsed = calcElapsed();
+      stopTicking();
+      startTimeRef.current = null;
+      baseElapsedRef.current = currentElapsed;
+      setElapsed(currentElapsed);
       setIsRunning(false);
-      setTimer(pausedElapsedRef.current, false);
+      setTimer(currentElapsed, false);
     } else {
-      // Se period é 0 (antes de iniciar), mudar para 1 (primeiro tempo)
+      // Resume / Start
       if (period === 0) {
-        console.log(`[TOGGLE] Iniciando partida - period 0 → 1`);
+        // First start → period 1
         setPeriod(1);
         storePeriod(1);
+        baseElapsedRef.current = 0;
         setElapsed(0);
         setTimer(0, true, 1);
       } else {
-        // Retomando após pause - usar elapsed da ref se foi capturado no pause
-        const resumeElapsed = pausedElapsedRef.current !== null ? pausedElapsedRef.current : elapsed;
-        console.log(`[TOGGLE] Retomando timer - elapsed: ${resumeElapsed}s (ref: ${pausedElapsedRef.current}, state: ${elapsed}), period: ${period}`);
-        setElapsed(resumeElapsed); // Força o elapsed correto
-        setTimer(resumeElapsed, true);
-        pausedElapsedRef.current = null; // Limpa ref após usar
+        // Resume from pause
+        // baseElapsedRef already holds the correct value from the pause
+        setElapsed(baseElapsedRef.current);
+        setTimer(baseElapsedRef.current, true);
       }
-      
-      timerRef.current = setInterval(() => {
-        setElapsed((e) => {
-          const next = e + 1;
-          setTimer(next, true);
-          return next;
-        });
-      }, 1000);
+
+      startTimeRef.current = Date.now();
+      startTicking();
       setIsRunning(true);
     }
-  }, [isRunning, elapsed, period, setTimer, storePeriod]);
+  }, [isRunning, period, calcElapsed, stopTicking, startTicking, setTimer, storePeriod]);
 
   /**
    * Marcar intervalo (fim do 1º tempo) — pausa e avança para período 2
    */
   const markHalfTime = useCallback(() => {
-    console.log(`[MARK HALFTIME] Finalizando 1º tempo com ${elapsed}s - resetando para 0 no 2º tempo`);
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    stopTicking();
+    startTimeRef.current = null;
+    baseElapsedRef.current = 0;
     setIsRunning(false);
-    setElapsed(0); // Reseta para 0 ao iniciar o 2º tempo
-    pausedElapsedRef.current = 0; // Garante que ref também está zerada
+    setElapsed(0);
     setPeriod(2);
     storePeriod(2);
-    setTimer(0, false); // Timer começa de 0 no 2º tempo
-    console.log(`[MARK HALFTIME] 2º tempo pronto para iniciar do 0`);
-  }, [elapsed, setTimer, storePeriod]);
+    setTimer(0, false);
+  }, [stopTicking, setTimer, storePeriod]);
 
   /**
    * Encerrar partida
    */
   const markFullTime = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    stopTicking();
+    startTimeRef.current = null;
+    baseElapsedRef.current = 0;
     setIsRunning(false);
     setElapsed(0);
-    pausedElapsedRef.current = null;
     setPeriod(0);
     storePeriod(0);
     setTimer(0, false);
-  }, [setTimer, storePeriod]);
+  }, [stopTicking, setTimer, storePeriod]);
 
   /**
    * Reset timer
    */
   const resetTimer = useCallback(() => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+    stopTicking();
+    startTimeRef.current = null;
+    baseElapsedRef.current = 0;
     setIsRunning(false);
     setElapsed(0);
     setPeriod(1);
     storePeriod(1);
     setTimer(0, false);
-  }, [setTimer, storePeriod]);
+  }, [stopTicking, setTimer, storePeriod]);
 
   return {
     isRunning,
