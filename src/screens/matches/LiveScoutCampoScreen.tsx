@@ -59,6 +59,7 @@ export function LiveScoutCampoScreen() {
   const [showEventsModal, setShowEventsModal] = useState(false);
   const [showSwapPanel, setShowSwapPanel] = useState(false);
   const [benchExpanded, setBenchExpanded] = useState(false);
+  const [matchFinished, setMatchFinished] = useState(false);
   // wall-clock timestamps (ms) when each player entered the field
   const fieldStartTimestamps = useRef<Record<string, number>>({});
   // Animation for bench panel
@@ -86,6 +87,9 @@ export function LiveScoutCampoScreen() {
     const match = matchRepo.getMatchById(matchId);
     if (!match) return;
     startLiveSession(match);
+    if (match.total_duration_seconds != null) {
+      setMatchFinished(true);
+    }
 
     // Restore field timers - usar paused_elapsed se existir, senão calcular do timestamp
     fieldRepo.getActiveFieldPlayers(match.id).forEach((p) => {
@@ -650,6 +654,11 @@ export function LiveScoutCampoScreen() {
 
           {/* Timer Controls */}
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+            {matchFinished ? (
+              <View style={{ backgroundColor: '#1f2937', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 8, borderWidth: 2, borderColor: '#4b5563' }}>
+                <Text style={{ color: '#9ca3af', fontSize: 14, fontWeight: '800', letterSpacing: 0.5 }}>ENCERRADA</Text>
+              </View>
+            ) : (<>
             {/* Play/Pause Timer */}
             <TouchableOpacity
               onPress={() => {
@@ -720,6 +729,9 @@ export function LiveScoutCampoScreen() {
                             delete fieldStartTimestamps.current[playerId];
                           });
                           
+                          fieldPausedElapsed.current = {};
+                          fieldPeriodChangeElapsed.current = {};
+                          setFieldTick(t => t + 1);
                           firstHalfElapsed.current = elapsed;
                           matchRepo.updateMatchFirstHalf(match.id, elapsed);
                           markHalfTime();
@@ -742,6 +754,9 @@ export function LiveScoutCampoScreen() {
                             delete fieldStartTimestamps.current[playerId];
                             delete fieldPeriodChangeElapsed.current[playerId];
                           });
+                          fieldPausedElapsed.current = {};
+                          setFieldTick(t => t + 1);
+                          setMatchFinished(true);
                           markFullTime();
                           const totalDuration = firstHalfElapsed.current + elapsed;
                           matchRepo.updateMatchTotalDuration(match.id, totalDuration);
@@ -772,11 +787,12 @@ export function LiveScoutCampoScreen() {
                 </Text>
               </TouchableOpacity>
             )}
+            </>)}
           </View>
         </View>
 
         {/* Warnings */}
-        {period === 0 && (
+        {period === 0 && !matchFinished && (
           <Text style={{ color: '#fbbf24', fontSize: 11, fontWeight: '600' }}>
             ⚠️ Posicione os jogadores antes de iniciar
           </Text>
