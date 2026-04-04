@@ -11,9 +11,9 @@ export const SVG_ASPECT_RATIO = 2 / 3;
  * Court visual constants
  */
 export const COURT_COLORS = {
-  background: '#2b5a2b',  // Verde mais escuro para Society
-  lines: '#ffffff',
-  lineWidth: 2.5,
+  background: '#0d1f0d',  // Verde escuro profundo para Society
+  lines: '#344d34',       // cinza esverdeado escuro
+  lineWidth: 1.8,         // mais fino/sutil
 } as const;
 
 /**
