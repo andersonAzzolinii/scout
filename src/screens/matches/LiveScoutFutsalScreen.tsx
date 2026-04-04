@@ -10,7 +10,7 @@ import {
   Pressable,
   BackHandler,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
@@ -693,11 +693,10 @@ export function LiveScoutFutsalScreen() {
   }
 
   return (
-    <View className="flex-1 bg-gray-950" style={{ 
-      paddingTop: insets.top,
+    <SafeAreaView className="flex-1 bg-gray-950" style={{ 
       borderWidth: !isRunning && period > 0 ? 3 : 0,
       borderColor: 'rgba(251,191,36,0.4)',
-    }}>
+    }} edges={['top']}>
       {/* ─── Top bar ─────────────────────────────────────────────────────────── */}
       <View style={{ borderBottomWidth: 1, borderBottomColor: '#1f2937', paddingHorizontal: 12, paddingVertical: 8 }}>
         {/* Match Info and Controls */}
@@ -1067,32 +1066,24 @@ export function LiveScoutFutsalScreen() {
               <View style={{ 
                 backgroundColor: '#0a0d14', 
                 borderTopWidth: 1, 
-                borderTopColor: '#1f2937', 
-                paddingBottom: insets.bottom,
-                overflow: 'hidden'
+                borderTopColor: '#1f2937',
+                overflow: 'hidden',
+                paddingBottom: insets.bottom
               }}>
                 <Animated.View style={{
                   height: benchPanelHeight.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0, 220]
+                    outputRange: [0, 200]
                   })
                 }}>
                   <Animated.View style={{ opacity: benchPanelOpacity }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1f2937' }}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                        <Icon name="account-multiple" size={16} color="#9ca3af" />
-                        <Text style={{ color: '#9ca3af', fontSize: 12, fontWeight: '700' }}>Reservas ({availablePlayers.length})</Text>
-                      </View>
-                      <TouchableOpacity onPress={() => setBenchExpanded(false)} style={{ padding: 4 }}>
-                        <Icon name="chevron-down" size={20} color="#9ca3af" />
-                      </TouchableOpacity>
-                    </View>
                     <BenchPanel
                       availablePlayers={availablePlayers}
                       selectedPlayerFromBench={selectedPlayerFromBench}
                       showEventsModal={showEventsModal}
                       onPlayerClick={() => {}}
                       onCancelSelection={() => setSelectedPlayerFromBench(null)}
+                      onClose={() => setBenchExpanded(false)}
                       getBenchStartTs={(playerId) => benchStartTimestamps.current[playerId]}
                       getPausedElapsed={(playerId) => benchPausedElapsed.current[playerId]}
                       isTimerRunning={isRunning}
@@ -1105,24 +1096,46 @@ export function LiveScoutFutsalScreen() {
             {!benchExpanded && (
               <TouchableOpacity
                 onPress={() => setBenchExpanded(true)}
+                activeOpacity={0.8}
                 style={{ 
-                  backgroundColor: '#0a0d14', 
-                  borderTopWidth: 1, 
-                  borderTopColor: '#374151',
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  paddingBottom: insets.bottom + 8,
+                  backgroundColor: 'rgba(10, 13, 20, 0.98)', 
+                  borderTopWidth: 2, 
+                  borderTopColor: 'rgba(99, 102, 241, 0.4)',
+                  paddingHorizontal: 14,
+                  paddingVertical: 9,
+                  paddingBottom: insets.bottom + 9,
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: 8
+                  gap: 8,
+                  shadowColor: '#6366f1',
+                  shadowOffset: { width: 0, height: -2 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 8,
                 }}
               >
-                <Icon name="account-multiple" size={18} color="#60a5fa" />
-                <Text style={{ color: '#60a5fa', fontSize: 13, fontWeight: '700' }}>
+                <View style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: 'rgba(99, 102, 241, 0.15)',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 1.5,
+                  borderColor: 'rgba(99, 102, 241, 0.5)'
+                }}>
+                  <Icon name="account-multiple" size={15} color="#818cf8" />
+                </View>
+                <Text style={{ 
+                  color: '#c7d2fe', 
+                  fontSize: 12, 
+                  fontWeight: '800',
+                  letterSpacing: 0.4
+                }}>
                   Reservas ({availablePlayers.length})
                 </Text>
-                <Icon name="chevron-up" size={18} color="#60a5fa" />
+                <Icon name="chevron-up" size={17} color="#818cf8" />
               </TouchableOpacity>
             )}
           </View>
@@ -1368,6 +1381,6 @@ export function LiveScoutFutsalScreen() {
           </View>
         );
       })()}
-    </View>
+    </SafeAreaView>
   );
 }
