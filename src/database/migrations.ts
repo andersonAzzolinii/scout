@@ -459,4 +459,51 @@ export function runMigrations(): void {
       FOREIGN KEY (player_in_id) REFERENCES players(id) ON DELETE CASCADE
     );
   `);
+
+  // ============================================================================
+  // MIGRAÇÃO POSITIONS + PLAYER FIELDS
+  // ============================================================================
+
+  // Migração: criar tabela positions (posições vinculadas ao elenco/sport_type)
+  db.execSync(`
+    CREATE TABLE IF NOT EXISTS positions (
+      id TEXT PRIMARY KEY NOT NULL,
+      squad_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      abbreviation TEXT NOT NULL DEFAULT '',
+      order_index INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE CASCADE
+    );
+  `);
+
+  // Migração: adicionar position_id na tabela players
+  try {
+    const playersInfo3 = db.getAllSync<{ name: string }>(`PRAGMA table_info(players);`);
+    if (!playersInfo3.some(c => c.name === 'position_id')) {
+      console.log('🔄 Adicionando campo position_id na tabela players...');
+      db.execSync(`ALTER TABLE players ADD COLUMN position_id TEXT;`);
+      console.log('✅ Campo position_id adicionado');
+    }
+  } catch (e) { console.warn('Migração position_id players:', e); }
+
+  // Migração: adicionar height na tabela players
+  try {
+    const playersInfo4 = db.getAllSync<{ name: string }>(`PRAGMA table_info(players);`);
+    if (!playersInfo4.some(c => c.name === 'height')) {
+      console.log('🔄 Adicionando campo height na tabela players...');
+      db.execSync(`ALTER TABLE players ADD COLUMN height REAL;`);
+      console.log('✅ Campo height adicionado');
+    }
+  } catch (e) { console.warn('Migração height players:', e); }
+
+  // Migração: adicionar weight na tabela players
+  try {
+    const playersInfo5 = db.getAllSync<{ name: string }>(`PRAGMA table_info(players);`);
+    if (!playersInfo5.some(c => c.name === 'weight')) {
+      console.log('🔄 Adicionando campo weight na tabela players...');
+      db.execSync(`ALTER TABLE players ADD COLUMN weight REAL;`);
+      console.log('✅ Campo weight adicionado');
+    }
+  } catch (e) { console.warn('Migração weight players:', e); }
 }

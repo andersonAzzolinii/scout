@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SquadFormModal } from '@/components/ui/SquadFormModal';
+import { PositionManagerModal } from '@/components/ui/PositionManagerModal';
 import { useTeamStore } from '@/store/useTeamStore';
 import type { RootStackParamList } from '@/navigation/RootNavigator';
 import type { Squad } from '@/types';
@@ -20,7 +21,7 @@ export function TeamDetailScreen() {
   const route = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const { teamId } = route.params;
-  const { teams, players, squads, loadPlayers, loadSquadsWithStats, deletePlayer, createSquad, updateSquad, deleteSquad } = useTeamStore();
+  const { teams, players, squads, positions, loadPlayers, loadSquadsWithStats, deletePlayer, createSquad, updateSquad, deleteSquad, loadPositions, createPosition, updatePosition, deletePosition } = useTeamStore();
 
   const team = teams.find((t) => t.id === teamId);
 
@@ -28,6 +29,7 @@ export function TeamDetailScreen() {
   const [editSquad, setEditSquad] = useState<Squad | null>(null);
   const [viewMode, setViewMode] = useState<'squads' | 'players'>('squads');
   const [expandedSquads, setExpandedSquads] = useState<Set<string>>(new Set(['no-squad']));
+  const [positionSquad, setPositionSquad] = useState<Squad | null>(null);
 
   useEffect(() => { 
     loadPlayers(teamId); 
@@ -167,6 +169,15 @@ export function TeamDetailScreen() {
                   </View>
                   <TouchableOpacity
                     onPress={() => {
+                      loadPositions(item.id);
+                      setPositionSquad(item);
+                    }}
+                    className="p-2 mr-1"
+                  >
+                    <Icon name="format-list-bulleted" size={18} color="#6366f1" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
                       setEditSquad(item);
                       setShowSquadModal(true);
                     }}
@@ -258,7 +269,7 @@ export function TeamDetailScreen() {
                         <View className="flex-1">
                           <Text className="text-sm font-semibold text-gray-900 dark:text-white">{player.name}</Text>
                           <Text className="text-xs text-gray-500 dark:text-gray-400">
-                            Camisa #{player.number}
+                            Camisa #{player.number}{player.position_name ? ` · ${player.position_name}` : ''}
                           </Text>
                         </View>
                         <TouchableOpacity
@@ -326,7 +337,7 @@ export function TeamDetailScreen() {
                         <View className="flex-1">
                           <Text className="text-sm font-semibold text-gray-900 dark:text-white">{player.name}</Text>
                           <Text className="text-xs text-gray-500 dark:text-gray-400">
-                            Camisa #{player.number}
+                            Camisa #{player.number}{player.position_name ? ` · ${player.position_name}` : ''}
                           </Text>
                         </View>
                         <TouchableOpacity
@@ -366,6 +377,17 @@ export function TeamDetailScreen() {
         teamId={teamId}
         teamName={team?.name ?? ''}
         editSquad={editSquad}
+      />
+
+      <PositionManagerModal
+        visible={!!positionSquad}
+        onClose={() => setPositionSquad(null)}
+        squadId={positionSquad?.id ?? ''}
+        squadName={positionSquad?.name ?? ''}
+        positions={positions}
+        onCreatePosition={createPosition}
+        onUpdatePosition={updatePosition}
+        onDeletePosition={deletePosition}
       />
     </View>
   );

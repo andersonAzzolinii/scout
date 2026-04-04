@@ -60,18 +60,36 @@ export interface Squad {
   team_name?: string;
 }
 
+// ─── Positions ────────────────────────────────────────────────────────────────
+export interface Position {
+  id: string;
+  squad_id: string;
+  name: string;
+  abbreviation: string;
+  order_index: number;
+  created_at: string;
+  // Joined fields (optional)
+  squad_name?: string;
+  sport_type?: SportType;
+}
+
 // ─── Players ─────────────────────────────────────────────────────────────────
 export interface Player {
   id: string;
   team_id: string;
   squad_id?: string | null;
+  position_id?: string | null;
   name: string;
   number: number;
+  height?: number | null;
+  weight?: number | null;
   photo_uri?: string | null;
   created_at: string;
   // Joined fields (optional)
   squad_name?: string;
   sport_type?: SportType;
+  position_name?: string;
+  position_abbreviation?: string;
 }
 
 // ─── Matches ─────────────────────────────────────────────────────────────────

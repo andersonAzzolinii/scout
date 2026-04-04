@@ -13,6 +13,7 @@ import { SquadSelector } from '@/components/ui/SquadSelector';
 import { useTeamStore } from '@/store/useTeamStore';
 import { generateId } from '@/utils';
 import type { RootStackParamList } from '@/navigation/RootNavigator';
+import type { Position } from '@/types';
 
 type Route = RouteProp<RootStackParamList, 'PlayerForm'>;
 
@@ -20,7 +21,7 @@ export function PlayerFormScreen() {
   const route = useRoute<Route>();
   const navigation = useNavigation();
   const { teamId, playerId } = route.params;
-  const { players, squads, createPlayer, updatePlayer, loadSquads } = useTeamStore();
+  const { players, squads, positions, createPlayer, updatePlayer, loadSquads, loadPositions } = useTeamStore();
 
   const existing = playerId ? players.find((p) => p.id === playerId) : undefined;
 
@@ -28,11 +29,20 @@ export function PlayerFormScreen() {
   const [number, setNumber] = useState(String(existing?.number ?? ''));
   const [photoBase64, setPhotoBase64] = useState<string | null>(existing?.photo_uri ?? null);
   const [squadId, setSquadId] = useState<string | null>(existing?.squad_id ?? null);
+  const [positionId, setPositionId] = useState<string | null>(existing?.position_id ?? null);
+  const [height, setHeight] = useState(existing?.height ? String(existing.height) : '');
+  const [weight, setWeight] = useState(existing?.weight ? String(existing.weight) : '');
   const [errors, setErrors] = useState<{ name?: string; number?: string }>({});
 
   useEffect(() => {
     loadSquads(teamId);
   }, [teamId]);
+
+  useEffect(() => {
+    if (squadId) {
+      loadPositions(squadId);
+    }
+  }, [squadId]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -126,15 +136,20 @@ export function PlayerFormScreen() {
 
   const handleSave = () => {
     if (!validate()) return;
+    const h = height.trim() ? parseFloat(height) : null;
+    const w = weight.trim() ? parseFloat(weight) : null;
     if (existing) {
-      updatePlayer(existing.id, name.trim(), Number(number), photoBase64, squadId);
+      updatePlayer(existing.id, name.trim(), Number(number), photoBase64, squadId, positionId, h, w);
     } else {
       createPlayer({ 
         id: generateId(), 
         team_id: teamId,
         squad_id: squadId,
+        position_id: positionId,
         name: name.trim(), 
         number: Number(number),
+        height: h,
+        weight: w,
         photo_uri: photoBase64 
       });
     }
@@ -200,10 +215,68 @@ export function PlayerFormScreen() {
           <SquadSelector
             squads={squads}
             selected={squadId}
-            onSelect={setSquadId}
+            onSelect={(id) => {
+              setSquadId(id);
+              setPositionId(null);
+            }}
             label="Elenco (Modalidade)"
             emptyMessage="Nenhum elenco cadastrado para este time"
           />
+          {/* Position Selector */}
+          {squadId && positions.length > 0 && (
+            <View className="mb-4">
+              <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Posição</Text>
+              <View className="flex-row flex-wrap gap-2">
+                <TouchableOpacity
+                  onPress={() => setPositionId(null)}
+                  className={`px-3 py-2 rounded-xl border ${
+                    !positionId
+                      ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+                  }`}
+                >
+                  <Text className={`text-xs font-medium ${!positionId ? 'text-primary-600 dark:text-primary-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                    Nenhuma
+                  </Text>
+                </TouchableOpacity>
+                {positions.map((pos) => (
+                  <TouchableOpacity
+                    key={pos.id}
+                    onPress={() => setPositionId(pos.id)}
+                    className={`px-3 py-2 rounded-xl border ${
+                      positionId === pos.id
+                        ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
+                    }`}
+                  >
+                    <Text className={`text-xs font-medium ${positionId === pos.id ? 'text-primary-600 dark:text-primary-400' : 'text-gray-600 dark:text-gray-300'}`}>
+                      {pos.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+          <View className="flex-row gap-3 mb-0">
+            <View className="flex-1">
+              <Input
+                label="Altura (cm)"
+                value={height}
+                onChangeText={setHeight}
+                placeholder="Ex: 175"
+                keyboardType="numeric"
+              />
+            </View>
+            <View className="flex-1">
+              <Input
+                label="Peso (kg)"
+                value={weight}
+                onChangeText={setWeight}
+                placeholder="Ex: 72"
+                keyboardType="numeric"
+              />
+            </View>
+          </View>
           <Button title={existing ? 'Salvar Alterações' : 'Adicionar Jogador'} onPress={handleSave} />
         </Card>
       </ScrollView>
