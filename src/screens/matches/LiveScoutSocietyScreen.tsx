@@ -17,6 +17,7 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { CourtRenderer } from '@/components/CourtRenderer';
 import { Popover } from '@/components/ui/Popover';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
+import { BenchPanel, BenchPlayerCard } from '@/components/match';
 import { useMatchStore } from '@/store/useMatchStore';
 import { useMatchTimer, useBenchPanel } from '@/hooks';
 import { generateId, formatTime } from '@/utils';
@@ -30,71 +31,6 @@ import { EVENT_CATEGORIES } from '@/constants/eventCategories';
 
 type Route = RouteProp<RootStackParamList, 'LiveScout'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-interface BenchPlayerCardProps {
-  playerName: string | null;
-  playerNumber: number | null;
-  photoUri: string | null;
-  benchStartTs?: number;
-  pausedElapsed?: number;
-  isTimerRunning: boolean;
-  onPress: () => void;
-  isSelected?: boolean;
-  expanded?: boolean;
-}
-
-function BenchPlayerCard({ playerName, playerNumber, photoUri, benchStartTs, pausedElapsed, isTimerRunning, onPress, isSelected, expanded }: BenchPlayerCardProps) {
-  const isOnBench = !!benchStartTs;
-  
-  // Se timer pausado e tem elapsed definido, usar o elapsed pausado; senão calcular normalmente
-  let benchTime = 0;
-  if (isOnBench) {
-    if (!isTimerRunning && pausedElapsed !== undefined) {
-      // Timer pausado - usar elapsed armazenado (congelado)
-      benchTime = pausedElapsed;
-    } else if (isTimerRunning) {
-      // Timer rodando - calcular desde timestamp
-      benchTime = Math.floor((Date.now() - benchStartTs!) / 1000);
-    } else {
-      // Timer pausado mas sem elapsed definido - manter em 0
-      benchTime = 0;
-    }
-  }
-  
-  const minutes = Math.floor(benchTime / 60);
-  const seconds = benchTime % 60;
-
-  return (
-    <View className="items-center">
-      <TouchableOpacity
-        onPress={onPress}
-        style={{
-          borderRadius: 10,
-          padding: 8,
-          alignItems: 'center',
-          backgroundColor: 'rgba(55,65,81,0.5)',
-          width: expanded ? 100 : 110,
-          borderWidth: 2,
-          borderColor: isSelected ? '#818cf8' : 'transparent',
-        }}
-      >
-        <PlayerAvatar
-          photoUri={photoUri}
-          playerNumber={playerNumber ?? 0}
-          size={64}
-        />
-        <Text className="text-white text-xs mt-1 font-medium" numberOfLines={1}>
-          {(playerName ?? 'Sem nome').split(' ')[0]}
-        </Text>
-        <View style={{ marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 99, backgroundColor: isOnBench ? '#d97706' : 'transparent', minWidth: 40, alignItems: 'center' }}>
-          <Text style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: '700', color: isOnBench ? '#ffffff' : 'transparent' }}>
-            {minutes}:{seconds.toString().padStart(2, '0')}
-          </Text>
-        </View>
-      </TouchableOpacity>
-    </View>
-  );
-}
 
 export function LiveScoutSocietyScreen() {
   const route = useRoute<Route>();
@@ -905,52 +841,16 @@ export function LiveScoutSocietyScreen() {
       <View className="flex-1 flex-row">
 
         {/* Left: Bench Players (hidden when event panels open) */}
-        {availablePlayers.length > 0 && !showEventsModal && (
-          <View style={{ width: 112, borderRightWidth: 1, borderRightColor: '#1f2937', backgroundColor: '#0b1120' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingTop: 8, paddingBottom: 4 }}>
-              <Text style={{ color: '#6b7280', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
-                RESERVAS
-              </Text>
-              {(() => {
-                const playersOnBench = availablePlayers.filter(p =>
-                  match && benchRepo.isPlayerOnBench(match.id, p.player_id)
-                ).length;
-                return playersOnBench > 0 ? (
-                  <View style={{ backgroundColor: '#d97706', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 }}>
-                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>{playersOnBench} fora</Text>
-                  </View>
-                ) : null;
-              })()}
-            </View>
-            {selectedPlayerFromBench && (
-              <View style={{ paddingHorizontal: 6, paddingBottom: 4 }}>
-                <Text style={{ color: '#818cf8', fontSize: 9 }}>Toque na quadra para posicionar</Text>
-                <TouchableOpacity
-                  onPress={() => setSelectedPlayerFromBench(null)}
-                  style={{ marginTop: 2, backgroundColor: '#374151', borderRadius: 4, paddingVertical: 2, alignItems: 'center' }}
-                >
-                  <Text style={{ color: '#d1d5db', fontSize: 9 }}>Cancelar</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 6, gap: 6 }}>
-              {availablePlayers.map((player) => (
-                <BenchPlayerCard
-                  key={player.player_id}
-                  playerName={player.player_name ?? null}
-                  playerNumber={player.player_number ?? null}
-                  photoUri={player.photo_uri ?? null}
-                  benchStartTs={benchStartTimestamps.current[player.player_id]}
-                  pausedElapsed={benchPausedElapsed.current[player.player_id]}
-                  isTimerRunning={isRunning}
-                  onPress={() => {}}
-                  isSelected={false}
-                  expanded={true}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        <BenchPanel
+          availablePlayers={availablePlayers}
+          selectedPlayerFromBench={selectedPlayerFromBench}
+          showEventsModal={showEventsModal}
+          onPlayerClick={() => {}}
+          onCancelSelection={() => setSelectedPlayerFromBench(null)}
+          getBenchStartTs={(playerId) => benchStartTimestamps.current[playerId]}
+          getPausedElapsed={(playerId) => benchPausedElapsed.current[playerId]}
+          isTimerRunning={isRunning}
+        />
 
         {/* Left: Negative Events Panel */}
         {showEventsModal && live.selectedPlayerId && period > 0 && (

@@ -17,6 +17,7 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { CourtRenderer } from '@/components/CourtRenderer';
 import { Popover } from '@/components/ui/Popover';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
+import { BenchPanel, BenchPlayerCard } from '@/components/match';
 import { useMatchStore } from '@/store/useMatchStore';
 import { useMatchTimer } from '@/hooks';
 import { generateId, formatTime } from '@/utils';
@@ -29,77 +30,6 @@ import { EVENT_CATEGORIES } from '@/constants/eventCategories';
 
 type Route = RouteProp<RootStackParamList, 'LiveScout'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
-
-interface BenchPlayerCardProps {
-  playerName: string | null;
-  playerNumber: number | null;
-  photoUri: string | null;
-  onPress: () => void;
-  isSelected?: boolean;
-  expanded?: boolean;
-  playerEvents?: MatchEvent[];
-}
-
-function BenchPlayerCard({ playerName, playerNumber, photoUri, onPress, isSelected, expanded, playerEvents = [] }: BenchPlayerCardProps) {
-  const negativeCount = playerEvents.filter(e => !e.is_positive).length;
-  const positiveCount = playerEvents.filter(e => e.is_positive).length;
-  const yellowCards = playerEvents.filter(e => e.event_id === 'cartao_amarelo' || e.event_name?.toLowerCase().includes('amarelo')).length;
-  const redCards = playerEvents.filter(e => e.event_id === 'cartao_vermelho' || e.event_name?.toLowerCase().includes('vermelho')).length;
-
-  return (
-    <View style={{ alignItems: 'center' }}>
-      <TouchableOpacity
-        onPress={onPress}
-        style={{
-          borderRadius: 10,
-          padding: 8,
-          alignItems: 'center',
-          backgroundColor: 'rgba(55,65,81,0.5)',
-          width: expanded ? 100 : 110,
-          borderWidth: 2,
-          borderColor: isSelected ? '#818cf8' : 'transparent',
-        }}
-      >
-        <View style={{ position: 'relative' }}>
-          <PlayerAvatar
-            photoUri={photoUri}
-            playerNumber={playerNumber ?? 0}
-            size={64}
-          />
-          {negativeCount > 0 && (
-            <View style={{ position: 'absolute', top: -4, left: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1, borderColor: '#fff' }}>
-              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>{negativeCount}</Text>
-            </View>
-          )}
-          {positiveCount > 0 && (
-            <View style={{ position: 'absolute', top: -4, right: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#16a34a', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1, borderColor: '#fff' }}>
-              <Text style={{ color: '#fff', fontSize: 9, fontWeight: '700' }}>{positiveCount}</Text>
-            </View>
-          )}
-        </View>
-        {(yellowCards > 0 || redCards > 0) && (
-          <View style={{ flexDirection: 'row', gap: 4, marginTop: 4, alignItems: 'center' }}>
-            {yellowCards > 0 && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                <View style={{ width: 10, height: 14, backgroundColor: '#eab308', borderRadius: 2, borderWidth: 1, borderColor: '#fbbf24' }} />
-                {yellowCards > 1 && <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '800' }}>×{yellowCards}</Text>}
-              </View>
-            )}
-            {redCards > 0 && (
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
-                <View style={{ width: 10, height: 14, backgroundColor: '#ef4444', borderRadius: 2, borderWidth: 1, borderColor: '#f87171' }} />
-                {redCards > 1 && <Text style={{ color: '#f87171', fontSize: 9, fontWeight: '800' }}>×{redCards}</Text>}
-              </View>
-            )}
-          </View>
-        )}
-        <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600', marginTop: 4 }} numberOfLines={1}>
-          {playerName ?? 'Sem nome'}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
 
 export function LiveScoutCampoScreen() {
   const route = useRoute<Route>();
@@ -827,40 +757,14 @@ export function LiveScoutCampoScreen() {
       <View className="flex-1 flex-row">
 
         {/* Left: Bench Players (hidden when event panels open) */}
-        {availablePlayers.length > 0 && !showEventsModal && (
-          <View style={{ width: 112, borderRightWidth: 1, borderRightColor: '#1f2937', backgroundColor: '#0b1120' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingTop: 8, paddingBottom: 4 }}>
-              <Text style={{ color: '#6b7280', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>
-                RESERVAS
-              </Text>
-            </View>
-            {selectedPlayerFromBench && (
-              <View style={{ paddingHorizontal: 6, paddingBottom: 4 }}>
-                <Text style={{ color: '#818cf8', fontSize: 9 }}>Toque na quadra para posicionar</Text>
-                <TouchableOpacity
-                  onPress={() => setSelectedPlayerFromBench(null)}
-                  style={{ marginTop: 2, backgroundColor: '#374151', borderRadius: 4, paddingVertical: 2, alignItems: 'center' }}
-                >
-                  <Text style={{ color: '#d1d5db', fontSize: 9 }}>Cancelar</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 6, gap: 6 }}>
-              {availablePlayers.map((player) => (
-                <BenchPlayerCard
-                  key={player.player_id}
-                  playerName={player.player_name ?? null}
-                  playerNumber={player.player_number ?? null}
-                  photoUri={player.photo_uri ?? null}
-                  onPress={() => handleBenchPlayerClick(player)}
-                  isSelected={selectedPlayerFromBench?.player_id === player.player_id}
-                  expanded={true}
-                  playerEvents={getPlayerEvents(player.player_id)}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        <BenchPanel
+          availablePlayers={availablePlayers}
+          selectedPlayerFromBench={selectedPlayerFromBench}
+          showEventsModal={showEventsModal}
+          onPlayerClick={handleBenchPlayerClick}
+          onCancelSelection={() => setSelectedPlayerFromBench(null)}
+          getPlayerEvents={getPlayerEvents}
+        />
 
         {/* Left: Negative Events Panel */}
         {showEventsModal && live.selectedPlayerId && period > 0 && (
