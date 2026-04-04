@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TouchableOpacity, Text, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
@@ -11,7 +11,7 @@ interface PositionButtonProps {
   screenX: number;
   screenY: number;
   player?: PlayerPosition['player'];
-  onPress: (position: number, screenX: number, screenY: number) => void;
+  onPress: (position: number, ref: React.RefObject<View | null>) => void;
   onPlayerPress?: (player: PlayerPosition['player']) => void;
   isSelected?: boolean;
   playerEvents?: MatchEvent[];
@@ -34,6 +34,7 @@ export function PositionButton({
   fieldStartTs,
   isTimerRunning = false,
 }: PositionButtonProps) {
+  const buttonRef = useRef<View>(null);
   const isOccupied = !!player;
   const { width: screenWidth } = useWindowDimensions();
   // Scale up on larger screens (min 45 on ~390px phone, grows proportionally)
@@ -112,19 +113,18 @@ export function PositionButton({
     }
   }, [yellowCards, redCards, player]);
 
-  const handlePress = (e: any) => {
-    const { pageX, pageY } = e.nativeEvent;
-    
+  const handlePress = () => {
     if (isOccupied && onPlayerPress && player) {
       onPlayerPress(player);
     } else {
-      onPress(position, pageX, pageY);
+      onPress(position, buttonRef);
     }
   };
 
   return (
     <>
       <TouchableOpacity
+        ref={buttonRef}
         onPress={handlePress}
         style={[
           styles.button,

@@ -10,7 +10,7 @@ import type { MatchEvent } from '@/types';
 interface FutsalCourtProps {
   width: number;
   positionedPlayers?: PlayerPosition[];
-  onPositionPress?: (position: number, screenX: number, screenY: number) => void;
+  onPositionPress?: (position: number, ref: React.RefObject<View | null>) => void;
   onPlayerPress?: (player: PlayerPosition['player']) => void;
   selectedPlayerId?: string | null;
   getPlayerEvents?: (playerId: string) => MatchEvent[];

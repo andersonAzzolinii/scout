@@ -15,9 +15,8 @@ import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { CourtRenderer } from '@/components/CourtRenderer';
-import { Popover } from '@/components/ui/Popover';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
-import { BenchPanel, BenchPlayerCard } from '@/components/match';
+import { BenchPanel, BenchPlayerCard, PlayerSelector } from '@/components/match';
 import { useMatchStore } from '@/store/useMatchStore';
 import { useMatchTimer, useBenchPanel } from '@/hooks';
 import { generateId, formatTime } from '@/utils';
@@ -56,8 +55,7 @@ export function LiveScoutSocietyScreen() {
   const [events, setEvents] = useState<ScoutEvent[]>([]);
   const [selectedPositionSlot, setSelectedPositionSlot] = useState<{
     position: number;
-    screenX: number;
-    screenY: number;
+    ref: React.RefObject<View | null>;
   } | null>(null);
   const [positionedPlayers, setPositionedPlayers] = useState<PlayerPosition[]>([]);
   const [selectedPlayerFromBench, setSelectedPlayerFromBench] = useState<typeof matchPlayers[0] | null>(null);
@@ -362,7 +360,7 @@ export function LiveScoutSocietyScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRunning]);
 
-  const handlePositionPress = (position: number, screenX: number, screenY: number) => {
+  const handlePositionPress = (position: number, ref: React.RefObject<View | null>) => {
     // Check if position already has a player - if yes, allow changing
     const existingPlayer = positionedPlayers.find((p) => p.position === position);
     
@@ -424,7 +422,7 @@ export function LiveScoutSocietyScreen() {
 
     // Open player selection popover
     if (availablePlayers.length === 0) return;
-    setSelectedPositionSlot({ position, screenX, screenY });
+    setSelectedPositionSlot({ position, ref });
   };
 
   const handlePlayerSelect = (player: typeof matchPlayers[0]) => {
@@ -1000,43 +998,15 @@ export function LiveScoutSocietyScreen() {
           </View>
         )}
 
-        {/* Player Selection Popover */}
-        {selectedPositionSlot && availablePlayers.length > 0 && !selectedPlayerFromBench && (
-          <Popover
-            visible={true}
-            x={selectedPositionSlot.screenX}
-            y={selectedPositionSlot.screenY}
-            onClose={() => setSelectedPositionSlot(null)}
-          >
-            <Text className="text-gray-400 text-xs mb-2 px-3 pt-2">Selecione um jogador:</Text>
-            <ScrollView
-              horizontal
-              className="px-3 pb-2"
-              showsHorizontalScrollIndicator={false}
-            >
-              <View className="flex-row gap-3 items-center">
-                {availablePlayers.map((player) => (
-                  <BenchPlayerCard
-                    key={player.player_id}
-                    playerName={player.player_name ?? null}
-                    playerNumber={player.player_number ?? null}
-                    photoUri={player.photo_uri ?? null}
-                    benchStartTs={benchStartTimestamps.current[player.player_id]}
-                    pausedElapsed={benchPausedElapsed.current[player.player_id]}
-                    isTimerRunning={isRunning}
-                    onPress={() => handlePlayerSelect(player)}
-                  />
-                ))}
-                <TouchableOpacity
-                  onPress={() => setSelectedPositionSlot(null)}
-                  className="bg-gray-700 rounded-lg px-5 py-5 items-center justify-center min-w-[100px]"
-                >
-                  <Text className="text-gray-300 text-sm">Cancelar</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </Popover>
-        )}
+        {/* Player Selection */}
+        <PlayerSelector
+          visible={!!selectedPositionSlot && availablePlayers.length > 0 && !selectedPlayerFromBench}
+          targetRef={selectedPositionSlot?.ref || null}
+          players={availablePlayers}
+          onPlayerSelect={handlePlayerSelect}
+          onClose={() => setSelectedPositionSlot(null)}
+          title="Selecione um jogador:"
+        />
 
         </View>
 
