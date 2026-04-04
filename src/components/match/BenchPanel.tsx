@@ -62,10 +62,12 @@ export function BenchPlayerCard({
         paddingVertical: 8,
         paddingHorizontal: 6,
         alignItems: 'center',
+        justifyContent: 'center',
         backgroundColor: isSelected 
           ? 'rgba(99, 102, 241, 0.25)' 
           : 'rgba(30, 41, 59, 0.9)',
         width: expanded ? 80 : 85,
+        minHeight: 70,
         borderWidth: 2,
         borderColor: isSelected ? '#6366f1' : 'rgba(71, 85, 105, 0.6)',
         shadowColor: isSelected ? '#6366f1' : '#000',
@@ -275,42 +277,6 @@ export function BenchPlayerCard({
         </View>
       )}
 
-      {/* Timer de banco (modo Futsal/Society) - Redesenhado */}
-      {!hasEventsMode && isOnBench && (
-        <View style={{ 
-          paddingHorizontal: 6, 
-          paddingVertical: 3, 
-          borderRadius: 8, 
-          backgroundColor: 'rgba(234, 88, 12, 0.25)',
-          borderWidth: 1.5,
-          borderColor: '#ea580c',
-          shadowColor: '#ea580c',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.4,
-          shadowRadius: 4,
-          elevation: 4,
-        }}>
-          <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 2
-          }}>
-            <Icon name="clock-outline" size={9} color="#fb923c" />
-            <Text style={{ 
-              fontSize: 10, 
-              fontFamily: 'monospace', 
-              fontWeight: '900', 
-              color: '#fb923c',
-              letterSpacing: 0.8,
-              textShadowColor: 'rgba(0, 0, 0, 0.5)',
-              textShadowOffset: { width: 0, height: 1 },
-              textShadowRadius: 1,
-            }}>
-              {minutes}:{seconds.toString().padStart(2, '0')}
-            </Text>
-          </View>
-        </View>
-      )}
     </TouchableOpacity>
   );
 }
@@ -509,8 +475,23 @@ export function BenchPanel({
               backgroundColor: 'transparent'
             }}
           >
-            {availablePlayers.map((player, index) => (
-              <View key={player.player_id}>
+            {availablePlayers.map((player, index) => {
+              const benchTs = getBenchStartTs?.(player.player_id);
+              const paused = getPausedElapsed?.(player.player_id);
+              const hasTimer = !!benchTs;
+              let timeSec = 0;
+              if (hasTimer) {
+                if (!isTimerRunning && paused !== undefined) {
+                  timeSec = paused;
+                } else if (isTimerRunning) {
+                  timeSec = Math.floor((Date.now() - benchTs!) / 1000);
+                }
+              }
+              const mm = Math.floor(timeSec / 60);
+              const ss = timeSec % 60;
+
+              return (
+              <View key={player.player_id} style={{ alignItems: 'center' }}>
                 <BenchPlayerCard
                   playerName={player.player_name}
                   playerNumber={player.player_number}
@@ -519,10 +500,37 @@ export function BenchPanel({
                   isSelected={selectedPlayerFromBench?.player_id === player.player_id}
                   expanded={false}
                   playerEvents={getPlayerEvents?.(player.player_id)}
-                  benchStartTs={getBenchStartTs?.(player.player_id)}
-                  pausedElapsed={getPausedElapsed?.(player.player_id)}
+                  benchStartTs={benchTs}
+                  pausedElapsed={paused}
                   isTimerRunning={isTimerRunning}
                 />
+                {/* Timer abaixo do card */}
+                {hasTimer && (
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 3,
+                    marginTop: 4,
+                    paddingHorizontal: 6,
+                    paddingVertical: 3,
+                    borderRadius: 8,
+                    backgroundColor: isTimerRunning ? 'rgba(217, 140, 50, 0.18)' : 'rgba(200, 130, 50, 0.10)',
+                    borderWidth: 1,
+                    borderColor: isTimerRunning ? 'rgba(230, 160, 70, 0.4)' : 'rgba(200, 130, 50, 0.25)',
+                  }}>
+                    <Icon name="clock-outline" size={10} color="#e0a56e" />
+                    <Text style={{
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      fontWeight: '800',
+                      color: '#e0a56e',
+                      letterSpacing: 0.5,
+                    }}>
+                      {mm}:{ss.toString().padStart(2, '0')}
+                    </Text>
+                  </View>
+                )}
                 {/* Separador entre cards */}
                 {index < availablePlayers.length - 1 && (
                   <View style={{
@@ -536,7 +544,8 @@ export function BenchPanel({
                   }} />
                 )}
               </View>
-            ))}
+              );
+            })}
           </ScrollView>
         </View>
       </View>

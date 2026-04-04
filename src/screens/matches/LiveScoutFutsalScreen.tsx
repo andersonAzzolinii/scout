@@ -16,7 +16,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { CourtRenderer } from '@/components/CourtRenderer';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
-import { BenchPanel, BenchPlayerCard, PlayerSelector } from '@/components/match';
+import { BenchPanel, PlayerSelector, SwapPanel } from '@/components/match';
 import { useMatchStore } from '@/store/useMatchStore';
 import { useMatchTimer, useBenchPanel } from '@/hooks';
 import { generateId, formatTime } from '@/utils';
@@ -1309,56 +1309,20 @@ export function LiveScoutFutsalScreen() {
       })()}
 
       {/* ─── Swap Panel Overlay ───────────────────────────────────────────────── */}
-      {showEventsModal && showSwapPanel && live.selectedPlayerId && period > 0 && (() => {
-        const benchPlayers = matchPlayers.filter(
-          mp => !positionedPlayers.some(pp => pp.player.player_id === mp.player_id)
-            && mp.player_id !== live.selectedPlayerId
-        );
-        return (
-          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(15,23,42,0.97)', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, paddingBottom: insets.bottom + 16, zIndex: 50, borderTopWidth: 1, borderTopColor: !isRunning ? '#fbbf24' : '#374151' }}>
-            {/* Indicador de tempo pausado */}
-            {!isRunning && (
-              <View style={{ backgroundColor: 'rgba(251,191,36,0.15)', borderRadius: 8, paddingVertical: 4, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginBottom: 8 }}>
-                <Icon name="pause-circle" size={14} color="#fbbf24" />
-                <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>TEMPO PAUSADO</Text>
-              </View>
-            )}
-            <Text style={{ color: '#9ca3af', fontSize: 13, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10, textAlign: 'center' }}>
-              Escolha quem entra
-            </Text>
-            {benchPlayers.length === 0 ? (
-              <Text style={{ color: '#6b7280', textAlign: 'center', fontSize: 13 }}>Nenhum reserva disponível</Text>
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={{ flexDirection: 'row', gap: 10 }}>
-                  {benchPlayers.map(player => {
-                    const benchTs = benchStartTimestamps.current[player.player_id];
-                    const pausedEl = benchPausedElapsed.current[player.player_id];
-                    return (
-                      <BenchPlayerCard
-                        key={player.player_id}
-                        playerName={player.player_name ?? null}
-                        playerNumber={player.player_number ?? null}
-                        photoUri={player.photo_uri ?? null}
-                        benchStartTs={benchTs}
-                        pausedElapsed={pausedEl}
-                        isTimerRunning={isRunning}
-                        onPress={() => handleSwapPlayer(player)}
-                      />
-                    );
-                  })}
-                </View>
-              </ScrollView>
-            )}
-            <TouchableOpacity
-              onPress={() => setShowSwapPanel(false)}
-              style={{ marginTop: 12, alignSelf: 'stretch', backgroundColor: '#374151', borderRadius: 10, paddingVertical: 12, alignItems: 'center' }}
-            >
-              <Text style={{ color: '#d1d5db', fontSize: 15, fontWeight: '600' }}>Cancelar troca</Text>
-            </TouchableOpacity>
-          </View>
-        );
-      })()}
+      {showEventsModal && showSwapPanel && live.selectedPlayerId && period > 0 && (
+        <SwapPanel
+          players={matchPlayers.filter(
+            mp => !positionedPlayers.some(pp => pp.player.player_id === mp.player_id)
+              && mp.player_id !== live.selectedPlayerId
+          )}
+          isTimerRunning={isRunning}
+          bottomInset={insets.bottom}
+          onSwap={handleSwapPlayer}
+          onCancel={() => setShowSwapPanel(false)}
+          getBenchStartTs={(playerId) => benchStartTimestamps.current[playerId]}
+          getPausedElapsed={(playerId) => benchPausedElapsed.current[playerId]}
+        />
+      )}
     </SafeAreaView>
   );
 }
