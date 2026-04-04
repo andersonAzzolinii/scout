@@ -176,7 +176,7 @@ export function LiveScoutFutsalScreen() {
   );
 
   // Filtrar eventos baseado na posição do jogador selecionado
-  // Goleiro (posição 1): apenas categoria GOLEIRO
+  // Goleiro (posição 1): categoria GOLEIRO + eventos gerais
   // Linha: todas as categorias exceto GOLEIRO
   const filteredEvents = useMemo(() => {
     if (!live.selectedPlayerId) return events;
@@ -186,14 +186,22 @@ export function LiveScoutFutsalScreen() {
       p => p.player.player_id === live.selectedPlayerId
     )?.position;
     
-    // Se for posição 1 (goleiro), filtrar apenas eventos da categoria GOLEIRO
+    // Encontrar a categoria de goleiro pelo nome
+    const goleiroCategory = categories.find(c => c.name.toUpperCase() === 'GOLEIRO');
+    const goleiroCategoryId = goleiroCategory?.id;
+
+    // Se for posição 1 (goleiro), mostrar eventos de goleiro
+    // Se não houver categoria goleiro no perfil, mostrar todos
     if (selectedPlayerPosition === 1) {
-      return events.filter(event => event.category_id === 'goleiro');
+      if (!goleiroCategoryId) return events;
+      const goleiroEvents = events.filter(event => event.category_id === goleiroCategoryId);
+      return goleiroEvents.length > 0 ? goleiroEvents : events;
     }
 
     // Para outras posições, ocultar os eventos de goleiro
-    return events.filter(event => event.category_id !== 'goleiro');
-  }, [events, live.selectedPlayerId, positionedPlayers]);
+    if (!goleiroCategoryId) return events;
+    return events.filter(event => event.category_id !== goleiroCategoryId);
+  }, [events, categories, live.selectedPlayerId, positionedPlayers]);
 
   // Independent interval to keep bench timers ticking
   useEffect(() => {
