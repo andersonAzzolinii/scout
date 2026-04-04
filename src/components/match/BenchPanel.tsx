@@ -196,31 +196,6 @@ export function BenchPlayerCard({
         }
       </Text>
 
-      {/* Número do jogador */}
-      <View style={{
-        backgroundColor: isSelected ? 'rgba(99, 102, 241, 0.4)' : 'rgba(51, 65, 85, 0.9)',
-        borderRadius: 8,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderWidth: 1.5,
-        borderColor: isSelected ? '#6366f1' : 'rgba(71, 85, 105, 0.8)',
-        marginBottom: 5,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.25,
-        shadowRadius: 2,
-        elevation: 2,
-      }}>
-        <Text style={{ 
-          color: isSelected ? '#c7d2fe' : '#94a3b8', 
-          fontSize: 9, 
-          fontWeight: '900',
-          letterSpacing: 0.6
-        }}>
-          #{playerNumber ?? 0}
-        </Text>
-      </View>
-
       {/* Cartões (modo Campo) - Redesenhados */}
       {hasEventsMode && (yellowCards > 0 || redCards > 0) && (
         <View style={{ 
