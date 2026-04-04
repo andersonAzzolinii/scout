@@ -308,13 +308,13 @@ export function LiveScoutSocietyScreen() {
     }
   }, [showEventsModal]);
 
-  // Auto-close events modal if period becomes 0
+  // Auto-close events modal if period becomes 0 (but not when match is finished)
   useEffect(() => {
-    if (showEventsModal && period === 0) {
+    if (showEventsModal && period === 0 && !matchFinished) {
       setShowEventsModal(false);
       setShowSwapPanel(false);
     }
-  }, [period, showEventsModal]);
+  }, [period, showEventsModal, matchFinished]);
 
   // Animate bench panel
   useEffect(() => {
@@ -547,7 +547,7 @@ export function LiveScoutSocietyScreen() {
 
   const handlePlayerPress = (player:typeof matchPlayers[0]) => {
     // Bloquear registro de eventos antes de iniciar a partida
-    if (period === 0) {
+    if (period === 0 && !matchFinished) {
       Alert.alert(
         'Partida Não Iniciada',
         'Inicie o cronômetro para começar a registrar eventos.',
@@ -712,6 +712,9 @@ export function LiveScoutSocietyScreen() {
       Alert.alert('Selecione um jogador', 'Toque em um jogador antes de registrar um evento.');
       return;
     }
+
+    // Bloquear eventos se partida encerrada
+    if (matchFinished) return;
 
     // Validação: não permitir eventos antes de iniciar
     if (period === 0) {
@@ -941,7 +944,7 @@ export function LiveScoutSocietyScreen() {
       </View>
 
       {/* ─── Player Info Strip (visible when event panels are open) ─────────── */}
-      {showEventsModal && live.selectedPlayerId && period > 0 && (() => {
+      {showEventsModal && live.selectedPlayerId && (period > 0 || matchFinished) && (() => {
         const sel = positionedPlayers.find(p => p.player.player_id === live.selectedPlayerId)?.player;
         if (!sel) return null;
         return (
@@ -964,7 +967,7 @@ export function LiveScoutSocietyScreen() {
         <View className="flex-1 flex-row">
 
           {/* Left: Negative Events Panel */}
-        {showEventsModal && live.selectedPlayerId && period > 0 && (
+        {showEventsModal && live.selectedPlayerId && (period > 0 || matchFinished) && (
           <View style={{ width: 140, backgroundColor: '#0a0d14', borderRightWidth: 1, borderRightColor: '#1f2937' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(239,68,68,0.07)' : 'rgba(251,191,36,0.10)' }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#ef4444' : '#fbbf24' }} />
@@ -989,7 +992,8 @@ export function LiveScoutSocietyScreen() {
                         key={evt.id}
                         onPress={() => handleEventPress(evt)}
                         activeOpacity={0.55}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(239,68,68,0.04)' }}
+                        disabled={matchFinished}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(239,68,68,0.04)', opacity: matchFinished ? 0.35 : 1 }}
                       >
                         <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexShrink: 0 }}>
                           <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
@@ -1035,7 +1039,7 @@ export function LiveScoutSocietyScreen() {
         </View>
 
         {/* Right: Positive Events Panel */}
-        {showEventsModal && live.selectedPlayerId && period > 0 && (
+        {showEventsModal && live.selectedPlayerId && (period > 0 || matchFinished) && (
           <View style={{ width: 140, backgroundColor: '#0a0d14', borderLeftWidth: 1, borderLeftColor: '#1f2937' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(34,197,94,0.07)' : 'rgba(251,191,36,0.10)' }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#22c55e' : '#fbbf24' }} />
@@ -1060,7 +1064,8 @@ export function LiveScoutSocietyScreen() {
                         key={evt.id}
                         onPress={() => handleEventPress(evt)}
                         activeOpacity={0.55}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(34,197,94,0.04)' }}
+                        disabled={matchFinished}
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(34,197,94,0.04)', opacity: matchFinished ? 0.35 : 1 }}
                       >
                         <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', flexShrink: 0 }}>
                           <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e' }} />
@@ -1192,7 +1197,7 @@ export function LiveScoutSocietyScreen() {
       </View>
 
       {/* ─── Bottom Action Bar ─────────────────────────────────────────────────── */}
-      {showEventsModal && live.selectedPlayerId && !showSwapPanel && period > 0 && (() => {
+      {showEventsModal && live.selectedPlayerId && !showSwapPanel && (period > 0 || matchFinished) && (() => {
         const selId = live.selectedPlayerId;
         const selPlayer = positionedPlayers.find(p => p.player.player_id === selId)?.player;
         const benchPeriods = match && selPlayer ? benchRepo.getPlayerBenchPeriods(match.id, selPlayer.player_id) : [];
@@ -1200,11 +1205,11 @@ export function LiveScoutSocietyScreen() {
         const fmt = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
         return (
         <View style={{ backgroundColor: '#0b1120', borderTopWidth: 1, borderTopColor: '#1f2937' }}>
-          {/* Indicador de tempo pausado */}
+          {/* Indicador de tempo pausado / partida encerrada */}
           {!isRunning && (
-            <View style={{ backgroundColor: 'rgba(251,191,36,0.15)', borderBottomWidth: 1, borderBottomColor: '#fbbf24', paddingVertical: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <Icon name="pause-circle" size={16} color="#fbbf24" />
-              <Text style={{ color: '#fbbf24', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>CRONÔMETRO PAUSADO</Text>
+            <View style={{ backgroundColor: matchFinished ? 'rgba(107,114,128,0.15)' : 'rgba(251,191,36,0.15)', borderBottomWidth: 1, borderBottomColor: matchFinished ? '#6b7280' : '#fbbf24', paddingVertical: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              <Icon name={matchFinished ? 'flag-checkered' : 'pause-circle'} size={16} color={matchFinished ? '#9ca3af' : '#fbbf24'} />
+              <Text style={{ color: matchFinished ? '#9ca3af' : '#fbbf24', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>{matchFinished ? 'PARTIDA ENCERRADA' : 'CRONÔMETRO PAUSADO'}</Text>
             </View>
           )}
           {/* Player events list with delete */}
@@ -1359,6 +1364,7 @@ export function LiveScoutSocietyScreen() {
             );
           })()}
           {/* Action buttons */}
+          {!matchFinished && (
           <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 12, paddingTop: 10, paddingBottom: insets.bottom + 10 }}>
           <TouchableOpacity
             onPress={() => setShowSwapPanel(true)}
@@ -1375,6 +1381,8 @@ export function LiveScoutSocietyScreen() {
             <Text style={{ color: '#f87171', fontSize: 14, fontWeight: '700' }}>Remover</Text>
           </TouchableOpacity>
           </View>
+          )}
+          {matchFinished && <View style={{ paddingBottom: insets.bottom + 10 }} />}
         </View>
         );
       })()}
