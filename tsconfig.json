@@ -7,7 +7,7 @@
       "@/*": ["src/*"]
     },
     "jsx": "react-native",
-    "types": ["react-native", "node"]
+    "types": ["react-native", "node", "jest"]
   },
   "include": [
     "**/*.ts",
