@@ -93,9 +93,15 @@ export function getMatchesBySportType(sportType: string): Match[] {
 export function getMatchPlayers(matchId: string): MatchPlayer[] {
   const db = getDatabase();
   return db.getAllSync<MatchPlayer>(
-    `SELECT mp.*, p.name AS player_name, p.number AS player_number, p.photo_uri
+    `SELECT mp.*, 
+            p.name AS player_name, 
+            p.number AS player_number, 
+            p.photo_uri,
+            pos.name AS position_name,
+            pos.abbreviation AS position_abbreviation
      FROM match_players mp
      JOIN players p ON mp.player_id = p.id
+     LEFT JOIN positions pos ON p.position_id = pos.id
      WHERE mp.match_id = ?`,
     [matchId]
   );

@@ -200,6 +200,27 @@ export function PositionButton({
             <Text style={styles.playerName} numberOfLines={1}>
               {player.player_name ?? 'Sem nome'}
             </Text>
+            {/* Position abbreviation */}
+            {player.position_abbreviation && (
+              <View style={{
+                backgroundColor: 'rgba(99, 102, 241, 0.25)',
+                paddingHorizontal: 5,
+                paddingVertical: 2,
+                borderRadius: 4,
+                marginTop: 2,
+                borderWidth: 1,
+                borderColor: 'rgba(99, 102, 241, 0.5)',
+              }}>
+                <Text style={{
+                  color: '#c7d2fe',
+                  fontSize: 8,
+                  fontWeight: '800',
+                  letterSpacing: 0.5,
+                }}>
+                  {player.position_abbreviation}
+                </Text>
+              </View>
+            )}
           </View>
         ) : (
           <PlayerAvatar

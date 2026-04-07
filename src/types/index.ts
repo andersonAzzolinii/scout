@@ -128,6 +128,8 @@ export interface MatchPlayer {
   player_name?: string;
   player_number?: number;
   photo_uri?: string | null;
+  position_name?: string | null;
+  position_abbreviation?: string | null;
 }
 
 // ─── Match Events ─────────────────────────────────────────────────────────────

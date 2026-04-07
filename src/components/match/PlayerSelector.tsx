@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, Modal, TouchableOpacity, ScrollView, Dimensions, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { BenchPlayerCard } from './BenchPanel';
+import { groupAndSortPlayersByPosition, type PlayerWithPosition } from '@/utils/playerGrouping';
 
 interface PlayerSelectorProps<T extends {
   player_id: string;
@@ -22,6 +23,8 @@ export function PlayerSelector<T extends {
   player_name?: string | null;
   player_number?: number | null;
   photo_uri?: string | null;
+  position_name?: string | null;
+  position_abbreviation?: string | null;
 }>({
   visible,
   targetRef,
@@ -32,6 +35,12 @@ export function PlayerSelector<T extends {
 }: PlayerSelectorProps<T>) {
   const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
   const [targetPosition, setTargetPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  
+  // Agrupar jogadores por posição
+  const groupedPlayers = useMemo(
+    () => groupAndSortPlayersByPosition(players as PlayerWithPosition[]),
+    [players]
+  );
   
   // Medir a posição do elemento de referência
   useEffect(() => {
@@ -128,21 +137,58 @@ export function PlayerSelector<T extends {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
             >
-              {players.map((player) => (
-                <BenchPlayerCard
-                  key={player.player_id}
-                  playerName={player.player_name ?? null}
-                  playerNumber={player.player_number ?? null}
-                  photoUri={player.photo_uri ?? null}
-                  onPress={() => onPlayerSelect(player)}
-                />
+              {groupedPlayers.map((group, groupIndex) => (
+                <View key={group.positionName} style={{ marginBottom: 16 }}>
+                  {/* Position header with horizontal lines */}
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginBottom: 8,
+                    paddingHorizontal: 4,
+                  }}>
+                    <View style={{
+                      height: 1,
+                      flex: 1,
+                      backgroundColor: '#818cf8',
+                      marginRight: 8,
+                    }} />
+                    <Text style={{
+                      color: '#c7d2fe',
+                      fontSize: 9,
+                      fontWeight: '800',
+                      letterSpacing: 0.5,
+                      textTransform: 'uppercase',
+                    }}>
+                      {group.positionName}
+                    </Text>
+                    <View style={{
+                      height: 1,
+                      flex: 1,
+                      backgroundColor: '#818cf8',
+                      marginLeft: 8,
+                    }} />
+                  </View>
+
+                  {/* Players in this position */}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {group.players.map((player) => (
+                      <BenchPlayerCard
+                        key={player.player_id}
+                        playerName={player.player_name ?? null}
+                        playerNumber={player.player_number ?? null}
+                        photoUri={player.photo_uri ?? null}
+                        onPress={() => onPlayerSelect(player as T)}
+                      />
+                    ))}
+                  </View>
+                </View>
               ))}
               
-              {/* Botão Cancelar - estilo card */}
+              {/* Botão Cancelar - footer da lista */}
               <TouchableOpacity
                 onPress={onClose}
                 activeOpacity={0.7}
-                style={styles.cancelButton}
+                style={[styles.cancelButton, { marginTop: 27 }]}
               >
                 <View style={styles.cancelIconContainer}>
                   <Icon name="close-circle" size={32} color="#ef4444" />
@@ -215,7 +261,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     gap: 12,
-    alignItems: 'stretch',
+    alignItems: 'flex-start',
     paddingHorizontal: 4,
     paddingBottom: 4,
   },

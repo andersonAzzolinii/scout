@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
 import type { MatchEvent } from '@/types';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
+import { groupAndSortPlayersByPosition, type PlayerWithPosition } from '@/utils/playerGrouping';
 
 interface BenchPlayerCardProps {
   playerName: string | null | undefined;
@@ -325,6 +326,12 @@ export function BenchPanel({
     return null;
   }
 
+  // Agrupar jogadores por posição
+  const groupedPlayers = useMemo(
+    () => groupAndSortPlayersByPosition(availablePlayers as PlayerWithPosition[]),
+    [availablePlayers]
+  );
+
   // Layout horizontal (embaixo da quadra)
   if (orientation === 'horizontal') {
     return (
@@ -458,7 +465,7 @@ export function BenchPanel({
           </View>
         )}
 
-        {/* Lista de jogadores com scroll horizontal */}
+        {/* Lista de jogadores com scroll horizontal - Agrupados por posição */}
         <View style={{
           backgroundColor: 'rgba(15, 23, 42, 0.5)',
           paddingVertical: 2,
@@ -469,83 +476,108 @@ export function BenchPanel({
             contentContainerStyle={{ 
               paddingHorizontal: 14, 
               paddingVertical: 8, 
-              gap: 12
+              gap: 16
             }}
             style={{
               backgroundColor: 'transparent'
             }}
           >
-            {availablePlayers.map((player, index) => {
-              const benchTs = getBenchStartTs?.(player.player_id);
-              const paused = getPausedElapsed?.(player.player_id);
-              const hasTimer = !!benchTs;
-              let timeSec = 0;
-              if (hasTimer) {
-                if (!isTimerRunning && paused !== undefined) {
-                  timeSec = paused;
-                } else if (isTimerRunning) {
-                  timeSec = Math.floor((Date.now() - benchTs!) / 1000);
-                }
-              }
-              const mm = Math.floor(timeSec / 60);
-              const ss = timeSec % 60;
-
-              return (
-              <View key={player.player_id} style={{ alignItems: 'center' }}>
-                <BenchPlayerCard
-                  playerName={player.player_name}
-                  playerNumber={player.player_number}
-                  photoUri={player.photo_uri}
-                  onPress={() => onPlayerClick(player)}
-                  isSelected={selectedPlayerFromBench?.player_id === player.player_id}
-                  expanded={false}
-                  playerEvents={getPlayerEvents?.(player.player_id)}
-                  benchStartTs={benchTs}
-                  pausedElapsed={paused}
-                  isTimerRunning={isTimerRunning}
-                />
-                {/* Timer abaixo do card */}
-                {hasTimer && (
+            {groupedPlayers.map((group, groupIndex) => (
+              <View key={group.positionName} style={{ marginBottom: 16 }}>
+                {/* Position header with horizontal lines */}
+                <View style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginBottom: 8,
+                  paddingHorizontal: 4,
+                }}>
                   <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 3,
-                    marginTop: 4,
-                    paddingHorizontal: 6,
-                    paddingVertical: 3,
-                    borderRadius: 8,
-                    backgroundColor: isTimerRunning ? 'rgba(217, 140, 50, 0.18)' : 'rgba(200, 130, 50, 0.10)',
-                    borderWidth: 1,
-                    borderColor: isTimerRunning ? 'rgba(230, 160, 70, 0.4)' : 'rgba(200, 130, 50, 0.25)',
-                  }}>
-                    <Icon name="clock-outline" size={10} color="#e0a56e" />
-                    <Text style={{
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                      fontWeight: '800',
-                      color: '#e0a56e',
-                      letterSpacing: 0.5,
-                    }}>
-                      {mm}:{ss.toString().padStart(2, '0')}
-                    </Text>
-                  </View>
-                )}
-                {/* Separador entre cards */}
-                {index < availablePlayers.length - 1 && (
-                  <View style={{
-                    position: 'absolute',
-                    right: -6,
-                    top: '50%',
-                    width: 1,
-                    height: 60,
-                    backgroundColor: 'rgba(71, 85, 105, 0.25)',
-                    transform: [{ translateY: -30 }]
+                    height: 1,
+                    flex: 1,
+                    backgroundColor: '#818cf8',
+                    marginRight: 8,
                   }} />
-                )}
+                  <Text style={{
+                    color: '#c7d2fe',
+                    fontSize: 9,
+                    fontWeight: '800',
+                    letterSpacing: 0.5,
+                    textTransform: 'uppercase',
+                  }}>
+                    {group.positionName}
+                  </Text>
+                  <View style={{
+                    height: 1,
+                    flex: 1,
+                    backgroundColor: '#818cf8',
+                    marginLeft: 8,
+                  }} />
+                </View>
+
+                {/* Players in this position */}
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  {group.players.map((player, playerIndex) => {
+                    const benchTs = getBenchStartTs?.(player.player_id);
+                    const paused = getPausedElapsed?.(player.player_id);
+                    const hasTimer = !!benchTs;
+                    let timeSec = 0;
+                    if (hasTimer) {
+                      if (!isTimerRunning && paused !== undefined) {
+                        timeSec = paused;
+                      } else if (isTimerRunning) {
+                        timeSec = Math.floor((Date.now() - benchTs!) / 1000);
+                      }
+                    }
+                    const mm = Math.floor(timeSec / 60);
+                    const ss = timeSec % 60;
+
+                    return (
+                      <View key={player.player_id} style={{ alignItems: 'center' }}>
+                        <BenchPlayerCard
+                          playerName={player.player_name}
+                          playerNumber={player.player_number}
+                          photoUri={player.photo_uri}
+                          onPress={() => onPlayerClick(player)}
+                          isSelected={selectedPlayerFromBench?.player_id === player.player_id}
+                          expanded={false}
+                          playerEvents={getPlayerEvents?.(player.player_id)}
+                          benchStartTs={benchTs}
+                          pausedElapsed={paused}
+                          isTimerRunning={isTimerRunning}
+                        />
+                        {/* Timer abaixo do card */}
+                        {hasTimer && (
+                          <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 3,
+                            marginTop: 4,
+                            paddingHorizontal: 6,
+                            paddingVertical: 3,
+                            borderRadius: 8,
+                            backgroundColor: isTimerRunning ? 'rgba(217, 140, 50, 0.18)' : 'rgba(200, 130, 50, 0.10)',
+                            borderWidth: 1,
+                            borderColor: isTimerRunning ? 'rgba(230, 160, 70, 0.4)' : 'rgba(200, 130, 50, 0.25)',
+                          }}>
+                            <Icon name="clock-outline" size={10} color="#e0a56e" />
+                            <Text style={{
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                              fontWeight: '800',
+                              color: '#e0a56e',
+                              letterSpacing: 0.5,
+                            }}>
+                              {mm}:{ss.toString().padStart(2, '0')}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
               </View>
-              );
-            })}
+            ))}
           </ScrollView>
         </View>
       </View>
