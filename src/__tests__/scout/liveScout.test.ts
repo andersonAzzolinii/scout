@@ -717,4 +717,172 @@ describe('Scout Live Session Logic', () => {
       expect(player2Events[1].event_name).toBe('Gol');
     });
   });
+
+  // ─── Position Grouping in Bench ────────────────────────────────────────
+  describe('Position Grouping in Bench', () => {
+    beforeEach(() => {
+      eventRepo.getMatchEvents.mockReturnValue([]);
+      matchRepo.getMatchPlayers.mockReturnValue(mockMatchPlayers);
+      useMatchStore.getState().startLiveSession(mockMatch);
+    });
+
+    it('should group bench players by position', () => {
+      const { groupAndSortPlayersByPosition } = require('@/utils/playerGrouping');
+      
+      // Mock bench players with different positions
+      const benchPlayers = [
+        {
+          player_id: 'bp1',
+          player_name: 'Reserva Goleiro',
+          player_number: 12,
+          photo_uri: null,
+          position_name: 'Goleiro',
+          position_abbreviation: 'GOL',
+          position_id: 'pos1'
+        },
+        {
+          player_id: 'bp2',
+          player_name: 'Reserva Ala 1',
+          player_number: 14,
+          photo_uri: null,
+          position_name: 'Ala',
+          position_abbreviation: 'ALA',
+          position_id: 'pos3'
+        },
+        {
+          player_id: 'bp3',
+          player_name: 'Reserva Ala 2',
+          player_number: 13,
+          photo_uri: null,
+          position_name: 'Ala',
+          position_abbreviation: 'ALA',
+          position_id: 'pos3'
+        },
+      ];
+
+      const grouped = groupAndSortPlayersByPosition(benchPlayers);
+
+      // Should have 2 groups: GOL and ALA
+      expect(grouped.length).toBe(2);
+      expect(grouped[0].positionName).toBe('Goleiro');
+      expect(grouped[1].positionName).toBe('Ala');
+      
+      // Ala group should have 2 players
+      expect(grouped[1].players.length).toBe(2);
+      
+      // Players should be sorted by number within group
+      expect(grouped[1].players[0].player_number).toBe(13);
+      expect(grouped[1].players[1].player_number).toBe(14);
+    });
+
+    it('should include position data in match players query', () => {
+      const { getMatchPlayers } = require('@/database/repositories/matchRepository');
+      const players = getMatchPlayers(IDS.match);
+
+      // Mock players should have position info from JOIN
+      players.forEach((player: any) => {
+        if (player.position_id) {
+          expect(player).toHaveProperty('position_name');
+          expect(player).toHaveProperty('position_abbreviation');
+        }
+      });
+    });
+
+    it('should handle players without position (Sem Posição group)', () => {
+      const { groupAndSortPlayersByPosition } = require('@/utils/playerGrouping');
+      
+      const mixedPlayers = [
+        {
+          player_id: 'p1',
+          player_name: 'Com Posição',
+          player_number: 5,
+          photo_uri: null,
+          position_name: 'Fixo',
+          position_abbreviation: 'FIX',
+          position_id: 'pos2'
+        },
+        {
+          player_id: 'p2',
+          player_name: 'Sem Posição',
+          player_number: 10,
+          photo_uri: null,
+          position_name: null,
+          position_abbreviation: null,
+          position_id: null
+        },
+      ];
+
+      const grouped = groupAndSortPlayersByPosition(mixedPlayers);
+
+      // Should have 2 groups: FIX and Sem Posição
+      expect(grouped.length).toBe(2);
+      expect(grouped[0].positionName).toBe('Fixo');
+      expect(grouped[1].positionName).toBe('Sem Posição');
+      expect(grouped[1].positionAbbreviation).toBe('---');
+    });
+
+    it('should maintain player selection across grouped display', () => {
+      const { groupAndSortPlayersByPosition } = require('@/utils/playerGrouping');
+      
+      const players = mockMatchPlayers.slice(0, 3);
+      const selectedPlayerId = IDS.player2;
+
+      const grouped = groupAndSortPlayersByPosition(players);
+      
+      // Find selected player in grouped structure
+      const selectedPlayer = grouped
+        .flatMap((g: any) => g.players)
+        .find((p: any) => p.player_id === selectedPlayerId);
+
+      expect(selectedPlayer).toBeDefined();
+      expect(selectedPlayer?.player_id).toBe(selectedPlayerId);
+    });
+
+    it('should preserve all player data during grouping', () => {
+      const { groupAndSortPlayersByPosition } = require('@/utils/playerGrouping');
+      
+      const originalPlayers = [
+        {
+          player_id: 'p1',
+          player_name: 'Test Player',
+          player_number: 7,
+          photo_uri: 'photo.jpg',
+          position_name: 'Ala',
+          position_abbreviation: 'ALA',
+          position_id: 'pos3',
+          custom_field: 'should be preserved'
+        }
+      ];
+
+      const grouped = groupAndSortPlayersByPosition(originalPlayers);
+      const regroupedPlayer = grouped[0].players[0];
+
+      // All original fields should be preserved
+      expect(regroupedPlayer.player_id).toBe('p1');
+      expect(regroupedPlayer.player_name).toBe('Test Player');
+      expect(regroupedPlayer.player_number).toBe(7);
+      expect(regroupedPlayer.photo_uri).toBe('photo.jpg');
+      expect((regroupedPlayer as any).custom_field).toBe('should be preserved');
+    });
+
+    it('should sort position groups in futsal order', () => {
+      const { groupAndSortPlayersByPosition } = require('@/utils/playerGrouping');
+      
+      // Create players in random order
+      const unsortedPlayers = [
+        { player_id: 'p1', player_name: 'Pivô', player_number: 9, photo_uri: null, position_name: 'Pivô', position_abbreviation: 'PIV', position_id: 'pos4' },
+        { player_id: 'p2', player_name: 'Goleiro', player_number: 1, photo_uri: null, position_name: 'Goleiro', position_abbreviation: 'GOL', position_id: 'pos1' },
+        { player_id: 'p3', player_name: 'Ala', player_number: 7, photo_uri: null, position_name: 'Ala', position_abbreviation: 'ALA', position_id: 'pos3' },
+        { player_id: 'p4', player_name: 'Fixo', player_number: 5, photo_uri: null, position_name: 'Fixo', position_abbreviation: 'FIX', position_id: 'pos2' },
+      ];
+
+      const grouped = groupAndSortPlayersByPosition(unsortedPlayers);
+
+      // Should be in futsal order: GOL, FIX, ALA, PIV
+      expect(grouped[0].positionName).toBe('Goleiro');
+      expect(grouped[1].positionName).toBe('Fixo');
+      expect(grouped[2].positionName).toBe('Ala');
+      expect(grouped[3].positionName).toBe('Pivô');
+    });
+  });
 });
