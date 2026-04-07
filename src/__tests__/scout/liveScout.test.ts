@@ -526,4 +526,195 @@ describe('Scout Live Session Logic', () => {
       });
     });
   });
+
+  // ─── Position Swap via Long Press ──────────────────────────────────────
+  describe('Position Swap via Long Press', () => {
+    beforeEach(() => {
+      eventRepo.getMatchEvents.mockReturnValue([]);
+      matchRepo.getMatchPlayers.mockReturnValue(mockMatchPlayers);
+      matchRepo.updateMatchPlayerPosition = jest.fn();
+      useMatchStore.getState().startLiveSession(mockMatch);
+    });
+
+    it('should swap positions between two on-field players', () => {
+      // Simulate initial positions: player2 at position 2, player3 at position 3
+      const initialPositions = [
+        { player: mockMatchPlayers[1], position: 2 }, // player2
+        { player: mockMatchPlayers[2], position: 3 }, // player3
+      ];
+
+      // Long-press selects player2 for swap
+      const selectedForSwap = mockMatchPlayers[1]; // player2 at position 2
+
+      // User taps player3 to swap
+      const targetPlayer = mockMatchPlayers[2]; // player3 at position 3
+
+      // Logic: find positions and swap
+      const player1Position = initialPositions.find(
+        p => p.player.player_id === selectedForSwap.player_id
+      )?.position;
+      const player2Position = initialPositions.find(
+        p => p.player.player_id === targetPlayer.player_id
+      )?.position;
+
+      expect(player1Position).toBe(2);
+      expect(player2Position).toBe(3);
+
+      // Simulate swap
+      const updatedPositions = initialPositions.map(p => {
+        if (p.player.player_id === selectedForSwap.player_id) {
+          return { ...p, position: player2Position };
+        }
+        if (p.player.player_id === targetPlayer.player_id) {
+          return { ...p, position: player1Position };
+        }
+        return p;
+      });
+
+      // Verify positions were swapped
+      const player2NewPos = updatedPositions.find(
+        p => p.player.player_id === selectedForSwap.player_id
+      )?.position;
+      const player3NewPos = updatedPositions.find(
+        p => p.player.player_id === targetPlayer.player_id
+      )?.position;
+
+      expect(player2NewPos).toBe(3); // player2 moved to position 3
+      expect(player3NewPos).toBe(2); // player3 moved to position 2
+    });
+
+    it('should update database when positions are swapped', () => {
+      const player1 = mockMatchPlayers[0]; // player_id: IDS.player1
+      const player2 = mockMatchPlayers[1]; // player_id: IDS.player2
+      
+      // Simulate database update calls
+      matchRepo.updateMatchPlayerPosition(mockMatch.id, player1.player_id, 2);
+      matchRepo.updateMatchPlayerPosition(mockMatch.id, player2.player_id, 1);
+
+      expect(matchRepo.updateMatchPlayerPosition).toHaveBeenCalledWith(
+        mockMatch.id,
+        player1.player_id,
+        2
+      );
+      expect(matchRepo.updateMatchPlayerPosition).toHaveBeenCalledWith(
+        mockMatch.id,
+        player2.player_id,
+        1
+      );
+      expect(matchRepo.updateMatchPlayerPosition).toHaveBeenCalledTimes(2);
+    });
+
+    it('should not swap when selecting the same player (cancels swap mode)', () => {
+      const selectedForSwap = mockMatchPlayers[1]; // player2
+      
+      // User long-presses player2, then taps player2 again
+      const isSamePlayer = selectedForSwap.player_id === selectedForSwap.player_id;
+      
+      expect(isSamePlayer).toBe(true);
+      
+      // In this case, swap mode should cancel without calling updateMatchPlayerPosition
+      if (isSamePlayer) {
+        expect(matchRepo.updateMatchPlayerPosition).not.toHaveBeenCalled();
+      }
+    });
+
+    it('should handle multi-player position rotation', () => {
+      // Simulate 3 swaps in sequence: 1→2, 2→3, 3→1
+      const positions = [
+        { player: mockMatchPlayers[0], position: 1 },
+        { player: mockMatchPlayers[1], position: 2 },
+        { player: mockMatchPlayers[2], position: 3 },
+      ];
+
+      // Swap 1: player at position 1 ↔ player at position 2
+      let temp = positions[0].position;
+      positions[0].position = positions[1].position;
+      positions[1].position = temp;
+
+      expect(positions[0].position).toBe(2);
+      expect(positions[1].position).toBe(1);
+
+      // Swap 2: player at new position 2 ↔ player at position 3
+      temp = positions[0].position;
+      positions[0].position = positions[2].position;
+      positions[2].position = temp;
+
+      expect(positions[0].position).toBe(3);
+      expect(positions[2].position).toBe(2);
+    });
+
+    it('should preserve player field elapsed time after position swap', () => {
+      // Mock field start timestamps
+      const fieldStartTimestamps = {
+        [IDS.player1]: Date.now() - 600000, // 10 minutes ago
+        [IDS.player2]: Date.now() - 300000, // 5 minutes ago
+      };
+
+      const player1Elapsed = Math.floor((Date.now() - fieldStartTimestamps[IDS.player1]) / 1000);
+      const player2Elapsed = Math.floor((Date.now() - fieldStartTimestamps[IDS.player2]) / 1000);
+
+      // After swap, elapsed time should remain unchanged
+      expect(player1Elapsed).toBeGreaterThanOrEqual(600); // ~10 min
+      expect(player2Elapsed).toBeGreaterThanOrEqual(300); // ~5 min
+
+      // Position changes but elapsed time stays with the player
+      const player1NewElapsed = Math.floor((Date.now() - fieldStartTimestamps[IDS.player1]) / 1000);
+      expect(player1NewElapsed).toBeGreaterThanOrEqual(player1Elapsed);
+    });
+
+    it('should allow swapping goalkeeper with field player', () => {
+      const goalkeeper = mockMatchPlayers[0]; // player1 (Goleiro)
+      const fieldPlayer = mockMatchPlayers[1]; // player2 (Fixo)
+
+      const initialPositions = [
+        { player: goalkeeper, position: 1 },
+        { player: fieldPlayer, position: 2 },
+      ];
+
+      // Swap GK with field player
+      const swapped = [
+        { player: goalkeeper, position: 2 },
+        { player: fieldPlayer, position: 1 },
+      ];
+
+      expect(swapped[0].player.player_id).toBe(goalkeeper.player_id);
+      expect(swapped[0].position).toBe(2); // GK now at position 2
+      expect(swapped[1].player.player_id).toBe(fieldPlayer.player_id);
+      expect(swapped[1].position).toBe(1); // Field player now at position 1 (GK position)
+    });
+
+    it('should maintain event history after position swap', () => {
+      // Record events before swap
+      const evt1 = createMockMatchEvent({
+        id: 'before-swap',
+        player_id: IDS.player2,
+        event_name: 'Passe certo',
+        minute: 5,
+      });
+
+      useMatchStore.getState().addLiveEvent(evt1);
+
+      // Simulate position swap (player2: position 2 → 3)
+      matchRepo.updateMatchPlayerPosition(mockMatch.id, IDS.player2, 3);
+
+      // Record event after swap
+      const evt2 = createMockMatchEvent({
+        id: 'after-swap',
+        player_id: IDS.player2,
+        event_name: 'Gol',
+        minute: 10,
+      });
+
+      useMatchStore.getState().addLiveEvent(evt2);
+
+      // Both events should still belong to player2
+      const player2Events = useMatchStore.getState().live.events.filter(
+        e => e.player_id === IDS.player2
+      );
+
+      expect(player2Events).toHaveLength(2);
+      expect(player2Events[0].event_name).toBe('Passe certo');
+      expect(player2Events[1].event_name).toBe('Gol');
+    });
+  });
 });

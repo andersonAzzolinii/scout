@@ -6,6 +6,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "test": "jest",
+    "test:watch": "jest --watch",
     "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {
