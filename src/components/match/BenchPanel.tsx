@@ -490,10 +490,11 @@ export function BenchPanel({
                   alignItems: 'center',
                   marginBottom: 8,
                   paddingHorizontal: 4,
+                  minWidth: 150,
                 }}>
                   <View style={{
                     height: 1,
-                    flex: 1,
+                    width: 40,
                     backgroundColor: '#818cf8',
                     marginRight: 8,
                   }} />
@@ -508,7 +509,7 @@ export function BenchPanel({
                   </Text>
                   <View style={{
                     height: 1,
-                    flex: 1,
+                    width: 40,
                     backgroundColor: '#818cf8',
                     marginLeft: 8,
                   }} />
