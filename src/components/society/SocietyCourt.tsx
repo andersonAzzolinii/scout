@@ -12,7 +12,9 @@ interface SocietyCourtProps {
   positionedPlayers?: PlayerPosition[];
   onPositionPress?: (position: number, ref: React.RefObject<View | null>) => void;
   onPlayerPress?: (player: PlayerPosition['player']) => void;
+  onPlayerLongPress?: (player: PlayerPosition['player']) => void;
   selectedPlayerId?: string | null;
+  selectedPlayerIdForSwap?: string | null;
   getPlayerEvents?: (playerId: string) => MatchEvent[];
   getFieldStartTs?: (playerId: string) => number | undefined;
   isTimerRunning?: boolean;
@@ -27,7 +29,9 @@ export function SocietyCourt({
   positionedPlayers = [],
   onPositionPress,
   onPlayerPress,
+  onPlayerLongPress,
   selectedPlayerId,
+  selectedPlayerIdForSwap,
   getPlayerEvents,
   getFieldStartTs,
   isTimerRunning,
@@ -63,7 +67,9 @@ export function SocietyCourt({
             player={player?.player}
             onPress={onPositionPress || (() => {})}
             onPlayerPress={onPlayerPress}
+            onPlayerLongPress={onPlayerLongPress}
             isSelected={showEventsModal && player?.player?.player_id === selectedPlayerId}
+            isSelectedForSwap={player?.player?.player_id === selectedPlayerIdForSwap}
             playerEvents={player?.player ? getPlayerEvents?.(player.player.player_id) || [] : []}
             fieldStartTs={player?.player ? getFieldStartTs?.(player.player.player_id) : undefined}
             isTimerRunning={isTimerRunning}

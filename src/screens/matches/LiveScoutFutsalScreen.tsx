@@ -63,6 +63,8 @@ export function LiveScoutFutsalScreen() {
   const [showSwapPanel, setShowSwapPanel] = useState(false);
   const [benchExpanded, setBenchExpanded] = useState(false);
   const [matchFinished, setMatchFinished] = useState(false);
+  const [showPositionSwapMode, setShowPositionSwapMode] = useState(false);
+  const [selectedPlayerForPositionSwap, setSelectedPlayerForPositionSwap] = useState<typeof matchPlayers[0] | null>(null);
   // wall-clock timestamps (ms) when each player entered the bench
   const benchStartTimestamps = useRef<Record<string, number>>({});
   // elapsed seconds when timer was paused for each bench player
@@ -285,6 +287,16 @@ export function LiveScoutFutsalScreen() {
     });
     return () => subscription.remove();
   }, [showEventsModal]);
+
+  // Close position swap mode on hardware back button
+  useEffect(() => {
+    if (!showPositionSwapMode) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      handleCancelPositionSwap();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [showPositionSwapMode]);
 
   // Animate events modal
   useEffect(() => {
@@ -546,6 +558,12 @@ export function LiveScoutFutsalScreen() {
   };
 
   const handlePlayerPress = (player:typeof matchPlayers[0]) => {
+    // Se estiver no modo de troca de posição, selecionar jogador de destino
+    if (showPositionSwapMode && selectedPlayerForPositionSwap) {
+      handlePositionSwap(player);
+      return;
+    }
+
     // Bloquear registro de eventos antes de iniciar a partida
     if (period === 0 && !matchFinished) {
       Alert.alert(
@@ -561,8 +579,63 @@ export function LiveScoutFutsalScreen() {
     setShowEventsModal(true);
   };
 
+  const handlePlayerLongPress = (player: typeof matchPlayers[0]) => {
+    // Ativar modo de troca de posição
+    setSelectedPlayerForPositionSwap(player);
+    setShowPositionSwapMode(true);
+    setShowEventsModal(false);
+    setShowSwapPanel(false);
+  };
+
   const getPlayerEvents = (playerId: string) => {
     return live.events.filter(e => e.player_id === playerId);
+  };
+
+  const handlePositionSwap = (targetPlayer: typeof matchPlayers[0]) => {
+    if (!selectedPlayerForPositionSwap || !match) return;
+
+    // Não permitir trocar com o mesmo jogador
+    if (targetPlayer.player_id === selectedPlayerForPositionSwap.player_id) {
+      setShowPositionSwapMode(false);
+      setSelectedPlayerForPositionSwap(null);
+      return;
+    }
+
+    // Encontrar posições dos dois jogadores
+    const player1Position = positionedPlayers.find(
+      p => p.player.player_id === selectedPlayerForPositionSwap.player_id
+    )?.position;
+    const player2Position = positionedPlayers.find(
+      p => p.player.player_id === targetPlayer.player_id
+    )?.position;
+
+    if (!player1Position || !player2Position) return;
+
+    // Trocar posições no estado
+    const updatedPositions = positionedPlayers.map(p => {
+      if (p.player.player_id === selectedPlayerForPositionSwap.player_id) {
+        return { ...p, position: player2Position };
+      }
+      if (p.player.player_id === targetPlayer.player_id) {
+        return { ...p, position: player1Position };
+      }
+      return p;
+    });
+
+    setPositionedPlayers(updatedPositions);
+
+    // Atualizar no banco de dados
+    matchRepo.updateMatchPlayerPosition(match.id, selectedPlayerForPositionSwap.player_id, player2Position);
+    matchRepo.updateMatchPlayerPosition(match.id, targetPlayer.player_id, player1Position);
+
+    // Resetar modo de troca
+    setShowPositionSwapMode(false);
+    setSelectedPlayerForPositionSwap(null);
+  };
+
+  const handleCancelPositionSwap = () => {
+    setShowPositionSwapMode(false);
+    setSelectedPlayerForPositionSwap(null);
   };
 
   const handleSendToBench = () => {
@@ -941,6 +1014,22 @@ export function LiveScoutFutsalScreen() {
             #{selectedPlayerFromBench.player_number} - Toque em uma posição na quadra
           </Text>
         )}
+        {showPositionSwapMode && selectedPlayerForPositionSwap && (
+          <View style={{ marginTop: 4, backgroundColor: 'rgba(139,92,246,0.15)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(139,92,246,0.3)' }}>
+            <Text style={{ color: '#a78bfa', fontSize: 12, fontWeight: '700', textAlign: 'center' }}>
+              🔄 TROCAR POSIÇÃO
+            </Text>
+            <Text style={{ color: '#c4b5fd', fontSize: 10, marginTop: 2, textAlign: 'center' }}>
+              {selectedPlayerForPositionSwap.player_name} • Toque em outro jogador
+            </Text>
+            <TouchableOpacity
+              onPress={handleCancelPositionSwap}
+              style={{ marginTop: 6, paddingVertical: 4, paddingHorizontal: 12, backgroundColor: 'rgba(239,68,68,0.2)', borderRadius: 6, alignSelf: 'center' }}
+            >
+              <Text style={{ color: '#f87171', fontSize: 10, fontWeight: '600' }}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* ─── Player Info Strip (visible when event panels are open) ─────────── */}
@@ -967,7 +1056,7 @@ export function LiveScoutFutsalScreen() {
         <View className="flex-1 flex-row">
 
           {/* Left: Negative Events Panel */}
-        {showEventsModal && live.selectedPlayerId && (period > 0 || matchFinished) && (
+        {showEventsModal && live.selectedPlayerId && (period > 0 || matchFinished) && !showPositionSwapMode && (
           <View style={{ width: 140, backgroundColor: '#0a0d14', borderRightWidth: 1, borderRightColor: '#1f2937' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(239,68,68,0.07)' : 'rgba(251,191,36,0.10)' }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#ef4444' : '#fbbf24' }} />
@@ -1015,13 +1104,15 @@ export function LiveScoutFutsalScreen() {
           <CourtRenderer
             sportType={sportType as any}
             width={Math.min(
-              (screenWidth - (showEventsModal && live.selectedPlayerId ? 280 : 0)) * 0.96,
+              (screenWidth - (showEventsModal && live.selectedPlayerId && !showPositionSwapMode ? 280 : 0)) * 0.96,
               (screenHeight - insets.top - 130) * (2 / 3)
             )}
             onPositionPress={handlePositionPress}
             positionedPlayers={positionedPlayers}
             onPlayerPress={handlePlayerPress}
-            selectedPlayerId={live.selectedPlayerId}
+            onPlayerLongPress={handlePlayerLongPress}
+            selectedPlayerId={showPositionSwapMode && selectedPlayerForPositionSwap ? selectedPlayerForPositionSwap.player_id : live.selectedPlayerId}
+            selectedPlayerIdForSwap={selectedPlayerForPositionSwap?.player_id ?? null}
             getPlayerEvents={getPlayerEvents}
             getFieldStartTs={(playerId) => {
               // Não contar tempo se a partida ainda não começou
@@ -1034,12 +1125,12 @@ export function LiveScoutFutsalScreen() {
               return fieldStartTimestamps.current[playerId];
             }}
             isTimerRunning={isRunning}
-            showEventsModal={showEventsModal}
+            showEventsModal={showEventsModal && !showPositionSwapMode}
           />
         </View>
 
         {/* Right: Positive Events Panel */}
-        {showEventsModal && live.selectedPlayerId && (period > 0 || matchFinished) && (
+        {showEventsModal && live.selectedPlayerId && (period > 0 || matchFinished) && !showPositionSwapMode && (
           <View style={{ width: 140, backgroundColor: '#0a0d14', borderLeftWidth: 1, borderLeftColor: '#1f2937' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(34,197,94,0.07)' : 'rgba(251,191,36,0.10)' }}>
               <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#22c55e' : '#fbbf24' }} />
@@ -1197,7 +1288,7 @@ export function LiveScoutFutsalScreen() {
       </View>
 
       {/* ─── Bottom Action Bar ─────────────────────────────────────────────────── */}
-      {showEventsModal && live.selectedPlayerId && !showSwapPanel && (period > 0 || matchFinished) && (() => {
+      {showEventsModal && live.selectedPlayerId && !showSwapPanel && !showPositionSwapMode && (period > 0 || matchFinished) && (() => {
         const selId = live.selectedPlayerId;
         const selPlayer = positionedPlayers.find(p => p.player.player_id === selId)?.player;
         const benchPeriods = match && selPlayer ? benchRepo.getPlayerBenchPeriods(match.id, selPlayer.player_id) : [];

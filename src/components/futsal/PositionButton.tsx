@@ -13,7 +13,9 @@ interface PositionButtonProps {
   player?: PlayerPosition['player'];
   onPress: (position: number, ref: React.RefObject<View | null>) => void;
   onPlayerPress?: (player: PlayerPosition['player']) => void;
+  onPlayerLongPress?: (player: PlayerPosition['player']) => void;
   isSelected?: boolean;
+  isSelectedForSwap?: boolean;
   playerEvents?: MatchEvent[];
   fieldStartTs?: number;
   isTimerRunning?: boolean;
@@ -29,7 +31,9 @@ export function PositionButton({
   player,
   onPress,
   onPlayerPress,
+  onPlayerLongPress,
   isSelected = false,
+  isSelectedForSwap = false,
   playerEvents = [],
   fieldStartTs,
   isTimerRunning = false,
@@ -121,11 +125,19 @@ export function PositionButton({
     }
   };
 
+  const handleLongPress = () => {
+    if (isOccupied && onPlayerLongPress && player) {
+      onPlayerLongPress(player);
+    }
+  };
+
   return (
     <>
       <TouchableOpacity
         ref={buttonRef}
         onPress={handlePress}
+        onLongPress={handleLongPress}
+        delayLongPress={500}
         style={[
           styles.button,
           {
@@ -144,6 +156,7 @@ export function PositionButton({
                 playerNumber={player.player_number ?? 0}
                 size={currentSize}
                 isSelected={isSelected}
+                isSelectedForSwap={isSelectedForSwap}
               />
               {negativeEventsCount > 0 && (
                 <View style={{ position: 'absolute', top: -4, left: -4, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4, borderWidth: 1, borderColor: '#ffffff' }}>

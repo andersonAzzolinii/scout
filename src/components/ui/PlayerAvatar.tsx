@@ -7,6 +7,7 @@ interface PlayerAvatarProps {
   size?: number;
   forceJersey?: boolean; // Force showing circle button instead of photo
   isSelected?: boolean; // Highlight when selected
+  isSelectedForSwap?: boolean; // Highlight when selected for position swap
 }
 
 /**
@@ -18,13 +19,15 @@ export function PlayerAvatar({
   playerNumber, 
   size = 80,
   forceJersey = false,
-  isSelected = false
+  isSelected = false,
+  isSelectedForSwap = false
 }: PlayerAvatarProps) {
+  const isAnySelected = isSelected || isSelectedForSwap;
   // Pulsating animation for selected state
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    if (isSelected) {
+    if (isAnySelected) {
       // Start pulsating animation
       Animated.loop(
         Animated.sequence([
@@ -44,14 +47,15 @@ export function PlayerAvatar({
       // Reset animation
       pulseAnim.setValue(1);
     }
-  }, [isSelected, pulseAnim]);
+  }, [isAnySelected, pulseAnim]);
 
   // Show photo only if not forcing circle and photo exists
   if (photoUri && !forceJersey) {
+    const ringColor = isSelectedForSwap ? '#a78bfa' : '#f97316';
     return (
       <View style={{ position: 'relative' }}>
         {/* Pulsating outer ring when selected */}
-        {isSelected && (
+        {isAnySelected && (
           <Animated.View
             style={{
               position: 'absolute',
@@ -61,7 +65,7 @@ export function PlayerAvatar({
               top: -8,
               borderRadius: (size + 16) / 2,
               borderWidth: 3,
-              borderColor: '#f97316',
+              borderColor: ringColor,
               opacity: 0.6,
               transform: [{ scale: pulseAnim }],
             }}
@@ -72,11 +76,11 @@ export function PlayerAvatar({
             width: size,
             height: size,
             borderRadius: size / 2,
-            shadowColor: isSelected ? '#f97316' : '#000',
+            shadowColor: isAnySelected ? ringColor : '#000',
             shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: isSelected ? 0.8 : 0.3,
-            shadowRadius: isSelected ? 10 : 4,
-            elevation: isSelected ? 10 : 4,
+            shadowOpacity: isAnySelected ? 0.8 : 0.3,
+            shadowRadius: isAnySelected ? 10 : 4,
+            elevation: isAnySelected ? 10 : 4,
           }}
         >
           <Image
@@ -106,16 +110,20 @@ export function PlayerAvatar({
   };
 
   // Colors based on selection state
-  const backgroundColor = isSelected 
-    ? '#fb923c'  // orange-400 when selected
-    : playerNumber === 0 
-      ? 'rgba(31, 41, 55, 0.8)'  // gray-800 for empty position
-      : 'rgba(31, 41, 55, 0.9)';  // gray-800 for occupied position
+  const backgroundColor = isSelectedForSwap
+    ? '#a78bfa'  // purple-400 when selected for swap
+    : isSelected 
+      ? '#fb923c'  // orange-400 when selected
+      : playerNumber === 0 
+        ? 'rgba(31, 41, 55, 0.8)'  // gray-800 for empty position
+        : 'rgba(31, 41, 55, 0.9)';  // gray-800 for occupied position
+
+  const ringColor = isSelectedForSwap ? '#a78bfa' : '#f97316';
 
   return (
     <View style={{ position: 'relative' }}>
       {/* Pulsating outer ring when selected */}
-      {isSelected && (
+      {isAnySelected && (
         <Animated.View
           style={{
             position: 'absolute',
@@ -125,7 +133,7 @@ export function PlayerAvatar({
             top: -8,
             borderRadius: (size + 16) / 2,
             borderWidth: 3,
-            borderColor: '#f97316',
+            borderColor: ringColor,
             opacity: 0.6,
             transform: [{ scale: pulseAnim }],
           }}
@@ -139,11 +147,11 @@ export function PlayerAvatar({
           backgroundColor,
           justifyContent: 'center',
           alignItems: 'center',
-          shadowColor: isSelected ? '#f97316' : '#000',
+          shadowColor: isAnySelected ? ringColor : '#000',
           shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: isSelected ? 0.6 : 0.3,
-          shadowRadius: isSelected ? 8 : 4,
-          elevation: isSelected ? 8 : 4,
+          shadowOpacity: isAnySelected ? 0.6 : 0.3,
+          shadowRadius: isAnySelected ? 8 : 4,
+          elevation: isAnySelected ? 8 : 4,
         }}
       >
         <Text

@@ -13,7 +13,9 @@ interface CourtRendererProps {
   positionedPlayers?: PlayerPosition[];
   onPositionPress?: (position: number, ref: React.RefObject<View | null>) => void;
   onPlayerPress?: (player: PlayerPosition['player']) => void;
+  onPlayerLongPress?: (player: PlayerPosition['player']) => void;
   selectedPlayerId?: string | null;
+  selectedPlayerIdForSwap?: string | null;
   getPlayerEvents?: (playerId: string) => MatchEvent[];
   getFieldStartTs?: (playerId: string) => number | undefined;
   isTimerRunning?: boolean;
@@ -30,7 +32,9 @@ export function CourtRenderer({
   positionedPlayers = [],
   onPositionPress,
   onPlayerPress,
+  onPlayerLongPress,
   selectedPlayerId,
+  selectedPlayerIdForSwap,
   getPlayerEvents,
   getFieldStartTs,
   isTimerRunning,
@@ -42,7 +46,9 @@ export function CourtRenderer({
     positionedPlayers,
     onPositionPress,
     onPlayerPress,
+    onPlayerLongPress,
     selectedPlayerId,
+    selectedPlayerIdForSwap,
     getPlayerEvents,
     getFieldStartTs,
     isTimerRunning,
