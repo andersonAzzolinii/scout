@@ -407,3 +407,51 @@ export function computeTotalizerRate(
   if (total === 0) return null;
   return Math.round((computeTotalizerSuccess(t, counts) / total) * 100);
 }
+
+// ─── Generic Events (Always Available) ───────────────────────────────────────
+
+/**
+ * Generic events that are always available in livescout,
+ * regardless of custom profile configuration.
+ * Used for both user team and opponent team.
+ */
+export const GENERIC_EVENTS: EventDefinition[] = [
+  { id: 'gol', name: 'Gol', sentiment: '+', showInHeader: true, headerIcon: 'soccer', headerColor: '#22c55e' },
+  { id: 'falta_cometida', name: 'Falta', sentiment: '-' },
+  { id: 'finalizacao_no_gol', name: 'Finalização', sentiment: '+' },
+  { id: 'cartao_amarelo', name: 'Cartão Amarelo', sentiment: '-', showInHeader: true, headerIcon: 'card', headerColor: '#eab308' },
+  { id: 'cartao_vermelho', name: 'Cartão Vermelho', sentiment: '-', showInHeader: true, headerIcon: 'card', headerColor: '#ef4444' },
+  { id: 'escanteio', name: 'Escanteio', sentiment: '0' },
+];
+
+/**
+ * Get available events based on context
+ * @param context - 'player' for user team players, 'opponent' for opponent team
+ * @param customEvents - Custom events from scout profile (optional)
+ * @returns Array of event definitions
+ */
+export function getAvailableEvents(
+  context: 'player' | 'opponent',
+  customEvents?: EventDefinition[]
+): EventDefinition[] {
+  if (context === 'opponent') {
+    // For opponent: all custom events + generic events (deduplicated)
+    const allEvents = customEvents ? [...customEvents] : getAllEvents();
+    const genericIds = GENERIC_EVENTS.map(e => e.id);
+    const customOnly = allEvents.filter(e => !genericIds.includes(e.id));
+    return [...GENERIC_EVENTS, ...customOnly];
+  }
+  
+  // For player: all custom events + generic events (deduplicated)
+  const allEvents = customEvents ? [...customEvents] : getAllEvents();
+  const genericIds = GENERIC_EVENTS.map(e => e.id);
+  const customOnly = allEvents.filter(e => !genericIds.includes(e.id));
+  return [...GENERIC_EVENTS, ...customOnly];
+}
+
+/**
+ * Check if an event is a generic event
+ */
+export function isGenericEvent(eventId: string): boolean {
+  return GENERIC_EVENTS.some(e => e.id === eventId);
+}

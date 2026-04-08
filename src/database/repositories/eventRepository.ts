@@ -16,7 +16,7 @@ export function getMatchEvents(matchId: string): MatchEvent[] {
        se.category_id,
        t.name AS team_name
      FROM match_events me
-     JOIN players p ON me.player_id = p.id
+     LEFT JOIN players p ON me.player_id = p.id
      JOIN scout_events se ON me.event_id = se.id
      JOIN teams t ON me.team_id = t.id
      WHERE me.match_id = ?
@@ -28,20 +28,41 @@ export function getMatchEvents(matchId: string): MatchEvent[] {
 
 export function insertMatchEvent(event: Omit<MatchEvent, 'created_at' | 'player_name' | 'player_number' | 'event_name' | 'event_icon' | 'event_type' | 'is_positive' | 'team_name'>): void {
   const db = getDatabase();
+  
+  // Validate foreign keys before insert
+  const match = db.getFirstSync<{ id: string }>(`SELECT id FROM matches WHERE id = ?`, [event.match_id]);
+  if (!match) {
+    throw new Error(`Match with id ${event.match_id} does not exist`);
+  }
+  
+  const team = db.getFirstSync<{ id: string }>(`SELECT id FROM teams WHERE id = ?`, [event.team_id]);
+  if (!team) {
+    throw new Error(`Team with id ${event.team_id} does not exist`);
+  }
+  
+  // For opponent events, player_id can be null
+  if (event.player_id && !event.is_opponent_event) {
+    const player = db.getFirstSync<{ id: string }>(`SELECT id FROM players WHERE id = ?`, [event.player_id]);
+    if (!player) {
+      throw new Error(`Player with id ${event.player_id} does not exist`);
+    }
+  }
+  
   db.runSync(
-    `INSERT INTO match_events (id, match_id, team_id, player_id, event_id, minute, second, period, x, y)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO match_events (id, match_id, team_id, player_id, event_id, minute, second, period, x, y, is_opponent_event)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       event.id,
       event.match_id,
       event.team_id,
-      event.player_id,
+      event.player_id || null, // Allow null for opponent events
       event.event_id,
       event.minute,
       event.second,
       event.period ?? 1,
       event.x ?? null,
       event.y ?? null,
+      event.is_opponent_event ? 1 : 0,
     ]
   );
 }
@@ -59,18 +80,19 @@ export function getEventCountsByMatch(matchId: string): Array<{
   team_id: string;
   count: number;
   is_positive: number;
+  is_opponent_event: number;
 }> {
   const db = getDatabase();
   return db.getAllSync(
     `SELECT me.event_id, se.name AS event_name,
-       me.player_id, p.name AS player_name,
+       me.player_id, COALESCE(p.name, 'Adversário') AS player_name,
        me.team_id, COUNT(*) AS count,
-       se.is_positive
+       se.is_positive, me.is_opponent_event
      FROM match_events me
      JOIN scout_events se ON me.event_id = se.id
-     JOIN players p ON me.player_id = p.id
+     LEFT JOIN players p ON me.player_id = p.id
      WHERE me.match_id = ?
-     GROUP BY me.event_id, me.player_id`,
+     GROUP BY me.event_id, me.player_id, me.is_opponent_event`,
     [matchId]
   );
 }

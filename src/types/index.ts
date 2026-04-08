@@ -102,6 +102,8 @@ export interface Match {
   date: string;
   location: string;
   is_home: boolean;
+  home_score?: number;
+  away_score?: number;
   elapsed_seconds?: number;
   is_timer_running?: number;
   current_period?: number;
@@ -137,13 +139,14 @@ export interface MatchEvent {
   id: string;
   match_id: string;
   team_id: string;
-  player_id: string;
+  player_id: string | null; // NULL for opponent events
   event_id: string;
   minute: number;
   second: number;
   period?: number;
   x: number | null;
   y: number | null;
+  is_opponent_event?: boolean;
   created_at: string;
   // Joined fields (optional)
   player_name?: string;
@@ -210,6 +213,8 @@ export interface LiveMatchState {
   period: 0 | 1 | 2;
   /** Accumulated bench seconds per player, saved when screen is left */
   benchPausedElapsed: Record<string, number>;
+  homeScore: number;
+  awayScore: number;
 }
 
 // ─── Futsal-specific types ───────────────────────────────────────────────────

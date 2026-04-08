@@ -506,4 +506,100 @@ export function runMigrations(): void {
       console.log('✅ Campo weight adicionado');
     }
   } catch (e) { console.warn('Migração weight players:', e); }
+
+  // ============================================================================
+  // MIGRAÇÃO SCORE MANAGEMENT - Placar em partidas
+  // ============================================================================
+
+  // Migração: adicionar home_score e away_score na tabela matches
+  try {
+    const matchesInfo5 = db.getAllSync<{ name: string }>(`PRAGMA table_info(matches);`);
+    if (!matchesInfo5.some(c => c.name === 'home_score')) {
+      console.log('🔄 Adicionando campos de placar na tabela matches...');
+      db.execSync(`ALTER TABLE matches ADD COLUMN home_score INTEGER NOT NULL DEFAULT 0;`);
+      db.execSync(`ALTER TABLE matches ADD COLUMN away_score INTEGER NOT NULL DEFAULT 0;`);
+      console.log('✅ Campos home_score e away_score adicionados');
+    }
+  } catch (e) { console.warn('Migração score matches:', e); }
+
+  // ============================================================================
+  // MIGRAÇÃO OPPONENT EVENTS - Eventos do time adversário
+  // ============================================================================
+
+  // Migração: adicionar is_opponent_event na tabela match_events
+  try {
+    const eventsInfo2 = db.getAllSync<{ name: string }>(`PRAGMA table_info(match_events);`);
+    if (!eventsInfo2.some(c => c.name === 'is_opponent_event')) {
+      console.log('🔄 Adicionando campo is_opponent_event na tabela match_events...');
+      db.execSync(`ALTER TABLE match_events ADD COLUMN is_opponent_event INTEGER NOT NULL DEFAULT 0;`);
+      console.log('✅ Campo is_opponent_event adicionado');
+    }
+  } catch (e) { console.warn('Migração is_opponent_event:', e); }
+
+  // Migration: Make player_id nullable for opponent events
+  try {
+    // Check if player_id is still NOT NULL
+    const eventsInfo3 = db.getAllSync<{ name: string; notnull: number }>(`PRAGMA table_info(match_events);`);
+    const playerIdColumn = eventsInfo3.find(c => c.name === 'player_id');
+    
+    console.log('🔍 Verificando player_id constraint:', {
+      found: !!playerIdColumn,
+      notnull: playerIdColumn?.notnull,
+    });
+    
+    if (playerIdColumn && playerIdColumn.notnull === 1) {
+      console.log('🔄 Tornando player_id NULLABLE na tabela match_events (para eventos de adversário)...');
+      
+      // SQLite requires recreating table to remove NOT NULL constraint
+      db.execSync(`
+        CREATE TABLE match_events_new (
+          id TEXT PRIMARY KEY NOT NULL,
+          match_id TEXT NOT NULL,
+          team_id TEXT NOT NULL,
+          player_id TEXT,
+          event_id TEXT NOT NULL,
+          minute INTEGER NOT NULL DEFAULT 0,
+          second INTEGER NOT NULL DEFAULT 0,
+          period INTEGER NOT NULL DEFAULT 1,
+          x REAL,
+          y REAL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          is_opponent_event INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+          FOREIGN KEY (team_id) REFERENCES teams(id),
+          FOREIGN KEY (player_id) REFERENCES players(id),
+          FOREIGN KEY (event_id) REFERENCES scout_events(id)
+        );
+      `);
+      
+      // Copy data from old table
+      db.execSync(`
+        INSERT INTO match_events_new (id, match_id, team_id, player_id, event_id, minute, second, period, x, y, created_at, is_opponent_event)
+        SELECT id, match_id, team_id, player_id, event_id, minute, second, period, x, y, created_at, 
+               COALESCE(is_opponent_event, 0)
+        FROM match_events;
+      `);
+      
+      // Drop old table and rename new one
+      db.execSync(`DROP TABLE match_events;`);
+      db.execSync(`ALTER TABLE match_events_new RENAME TO match_events;`);
+      
+      // Recreate indices if any existed
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_match_events_match_id ON match_events(match_id);`);
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_match_events_player_id ON match_events(player_id);`);
+      
+      console.log('✅ player_id agora aceita NULL (para eventos de adversário)');
+      
+      // Verify the change
+      const verifyInfo = db.getAllSync<{ name: string; notnull: number }>(`PRAGMA table_info(match_events);`);
+      const verifyPlayerIdColumn = verifyInfo.find(c => c.name === 'player_id');
+      console.log('✓ Verificação pós-migração player_id:', {
+        notnull: verifyPlayerIdColumn?.notnull,
+      });
+    } else {
+      console.log('✓ player_id já aceita NULL - migração não necessária');
+    }
+  } catch (e) { 
+    console.error('❌ Erro na migração player_id nullable:', e); 
+  }
 }

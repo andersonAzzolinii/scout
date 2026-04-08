@@ -215,3 +215,31 @@ export function getMatchSubstitutions(matchId: string): PlayerSubstitution[] {
     [matchId]
   );
 }
+
+// ─── Score Management ───────────────────────────────────────────────────
+
+export function updateScore(matchId: string, homeScore: number, awayScore: number): void {
+  const db = getDatabase();
+  db.runSync(
+    `UPDATE matches SET home_score = ?, away_score = ? WHERE id = ?`,
+    [homeScore, awayScore, matchId]
+  );
+}
+
+export function incrementScore(matchId: string, team: 'home' | 'away'): void {
+  const db = getDatabase();
+  const field = team === 'home' ? 'home_score' : 'away_score';
+  db.runSync(
+    `UPDATE matches SET ${field} = ${field} + 1 WHERE id = ?`,
+    [matchId]
+  );
+}
+
+export function decrementScore(matchId: string, team: 'home' | 'away'): void {
+  const db = getDatabase();
+  const field = team === 'home' ? 'home_score' : 'away_score';
+  db.runSync(
+    `UPDATE matches SET ${field} = MAX(0, ${field} - 1) WHERE id = ?`,
+    [matchId]
+  );
+}

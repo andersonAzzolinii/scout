@@ -19,6 +19,7 @@ interface MatchStore {
   endLiveSession: () => void;
   setSelectedPlayer: (playerId: string, teamId: string) => void;
   addLiveEvent: (event: MatchEvent) => void;
+  addOpponentEvent: (event: MatchEvent) => void;
   deleteEvent: (id: string) => void;
   undoLastEvent: () => void;
   setTimer: (elapsedSeconds: number, isRunning: boolean) => void;
@@ -26,6 +27,10 @@ interface MatchStore {
   saveBenchElapsed: (byPlayerId: Record<string, number>) => void;
   clearBenchElapsed: (playerId: string) => void;
   loadLiveEvents: (matchId: string) => void;
+  // Score Management
+  setScore: (homeScore: number, awayScore: number) => void;
+  incrementScore: (team: 'home' | 'away') => void;
+  decrementScore: (team: 'home' | 'away') => void;
 }
 
 const defaultLive: LiveMatchState = {
@@ -38,6 +43,8 @@ const defaultLive: LiveMatchState = {
   isRunning: false,
   period: 1,
   benchPausedElapsed: {},
+  homeScore: 0,
+  awayScore: 0,
 };
 
 export const useMatchStore = create<MatchStore>((set, get) => ({
@@ -86,6 +93,8 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
     const elapsedSeconds = match.elapsed_seconds ?? 0;
     const isRunning = match.is_timer_running === 1;
     const period = (match.current_period ?? 1) as 0 | 1 | 2;
+    const homeScore = match.home_score ?? 0;
+    const awayScore = match.away_score ?? 0;
     
     if (live.match?.id === match.id) {
       // Same match — refresh data
@@ -97,7 +106,9 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
           players,
           elapsedSeconds,
           isRunning,
-          period
+          period,
+          homeScore,
+          awayScore
         } 
       }));
     } else {
@@ -110,7 +121,9 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
           players,
           elapsedSeconds,
           isRunning,
-          period
+          period,
+          homeScore,
+          awayScore
         } 
       });
     }
@@ -124,34 +137,146 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
     }));
   },
   addLiveEvent: (event) => {
+    const { live } = get();
     eventRepo.insertMatchEvent(event);
-    set((state) => ({
-      live: {
-        ...state.live,
-        events: [...state.live.events, event],
-      },
-    }));
+    
+    // Auto-increment score if event is a goal
+    if (event.event_name === 'Gol' || event.event_id?.includes('gol')) {
+      const isHome = live.match?.is_home ?? true;
+      const team = isHome ? 'home' : 'away';
+      
+      if (live.match) {
+        matchRepo.incrementScore(live.match.id, team);
+        set((state) => ({
+          live: {
+            ...state.live,
+            events: [...state.live.events, event],
+            homeScore: team === 'home' ? state.live.homeScore + 1 : state.live.homeScore,
+            awayScore: team === 'away' ? state.live.awayScore + 1 : state.live.awayScore,
+          },
+        }));
+      }
+    } else {
+      set((state) => ({
+        live: {
+          ...state.live,
+          events: [...state.live.events, event],
+        },
+      }));
+    }
+  },
+  addOpponentEvent: (event) => {
+    const { live } = get();
+    const opponentEvent = { ...event, is_opponent_event: true, player_id: null };
+    eventRepo.insertMatchEvent(opponentEvent);
+    
+    // Auto-increment opponent score if event is a goal
+    if (event.event_name === 'Gol' || event.event_id?.includes('gol')) {
+      const isHome = live.match?.is_home ?? true;
+      const team = isHome ? 'away' : 'home'; // Opponent score is opposite
+      
+      if (live.match) {
+        matchRepo.incrementScore(live.match.id, team);
+        set((state) => ({
+          live: {
+            ...state.live,
+            events: [...state.live.events, opponentEvent],
+            homeScore: team === 'home' ? state.live.homeScore + 1 : state.live.homeScore,
+            awayScore: team === 'away' ? state.live.awayScore + 1 : state.live.awayScore,
+          },
+        }));
+      }
+    } else {
+      set((state) => ({
+        live: {
+          ...state.live,
+          events: [...state.live.events, opponentEvent],
+        },
+      }));
+    }
   },
   deleteEvent: (id) => {
-    eventRepo.deleteMatchEvent(id);
-    set((state) => ({
-      live: {
-        ...state.live,
-        events: state.live.events.filter((e) => e.id !== id),
-      },
-    }));
+    const { live } = get();
+    const eventToDelete = live.events.find((e) => e.id === id);
+    
+    if (!eventToDelete) return;
+    
+    // If deleting a goal, decrement score
+    if (eventToDelete.event_name === 'Gol' || eventToDelete.event_id?.includes('gol')) {
+      const isHome = live.match?.is_home ?? true;
+      let team: 'home' | 'away';
+      
+      if (eventToDelete.is_opponent_event) {
+        // Opponent goal: decrement opponent score
+        team = isHome ? 'away' : 'home';
+      } else {
+        // User team goal: decrement user team score
+        team = isHome ? 'home' : 'away';
+      }
+      
+      if (live.match) {
+        matchRepo.decrementScore(live.match.id, team);
+      }
+      
+      eventRepo.deleteMatchEvent(id);
+      set((state) => ({
+        live: {
+          ...state.live,
+          events: state.live.events.filter((e) => e.id !== id),
+          homeScore: team === 'home' ? Math.max(0, state.live.homeScore - 1) : state.live.homeScore,
+          awayScore: team === 'away' ? Math.max(0, state.live.awayScore - 1) : state.live.awayScore,
+        },
+      }));
+    } else {
+      eventRepo.deleteMatchEvent(id);
+      set((state) => ({
+        live: {
+          ...state.live,
+          events: state.live.events.filter((e) => e.id !== id),
+        },
+      }));
+    }
   },
   undoLastEvent: () => {
     const { live } = get();
     if (live.events.length === 0) return;
     const last = live.events[live.events.length - 1];
-    eventRepo.deleteMatchEvent(last.id);
-    set((state) => ({
-      live: {
-        ...state.live,
-        events: state.live.events.slice(0, -1),
-      },
-    }));
+    
+    // If undoing a goal, decrement score
+    if (last.event_name === 'Gol' || last.event_id?.includes('gol')) {
+      const isHome = live.match?.is_home ?? true;
+      let team: 'home' | 'away';
+      
+      if (last.is_opponent_event) {
+        // Opponent goal: decrement opponent score
+        team = isHome ? 'away' : 'home';
+      } else {
+        // User team goal: decrement user team score
+        team = isHome ? 'home' : 'away';
+      }
+      
+      if (live.match) {
+        matchRepo.decrementScore(live.match.id, team);
+      }
+      
+      eventRepo.deleteMatchEvent(last.id);
+      set((state) => ({
+        live: {
+          ...state.live,
+          events: state.live.events.slice(0, -1),
+          homeScore: team === 'home' ? Math.max(0, state.live.homeScore - 1) : state.live.homeScore,
+          awayScore: team === 'away' ? Math.max(0, state.live.awayScore - 1) : state.live.awayScore,
+        },
+      }));
+    } else {
+      eventRepo.deleteMatchEvent(last.id);
+      set((state) => ({
+        live: {
+          ...state.live,
+          events: state.live.events.slice(0, -1),
+        },
+      }));
+    }
   },
   setTimer: (elapsedSeconds, isRunning) => {
     set((state) => {
@@ -191,5 +316,42 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
   loadLiveEvents: (matchId) => {
     const events = eventRepo.getMatchEvents(matchId);
     set((state) => ({ live: { ...state.live, events } }));
+  },
+  
+  // Score Management
+  setScore: (homeScore, awayScore) => {
+    const { live } = get();
+    if (live.match) {
+      matchRepo.updateScore(live.match.id, homeScore, awayScore);
+      set((state) => ({
+        live: { ...state.live, homeScore, awayScore },
+      }));
+    }
+  },
+  incrementScore: (team) => {
+    const { live } = get();
+    if (live.match) {
+      matchRepo.incrementScore(live.match.id, team);
+      set((state) => ({
+        live: {
+          ...state.live,
+          homeScore: team === 'home' ? state.live.homeScore + 1 : state.live.homeScore,
+          awayScore: team === 'away' ? state.live.awayScore + 1 : state.live.awayScore,
+        },
+      }));
+    }
+  },
+  decrementScore: (team) => {
+    const { live } = get();
+    if (live.match) {
+      matchRepo.decrementScore(live.match.id, team);
+      set((state) => ({
+        live: {
+          ...state.live,
+          homeScore: team === 'home' ? Math.max(0, state.live.homeScore - 1) : state.live.homeScore,
+          awayScore: team === 'away' ? Math.max(0, state.live.awayScore - 1) : state.live.awayScore,
+        },
+      }));
+    }
   },
 }));

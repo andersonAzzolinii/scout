@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect,useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Animated,
   Pressable,
   BackHandler,
+  Modal,
 } from 'react-native';
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
@@ -17,6 +18,8 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { CourtRenderer } from '@/components/CourtRenderer';
 import { PlayerAvatar } from '@/components/ui/PlayerAvatar';
 import { BenchPanel, PlayerSelector, SwapPanel } from '@/components/match';
+import { LiveTotalizadores } from '@/components/match/LiveTotalizadores';
+import { OpponentEventSelector } from '@/components/match/OpponentEventSelector';
 import { useMatchStore } from '@/store/useMatchStore';
 import { useMatchTimer, useBenchPanel } from '@/hooks';
 import { generateId, formatTime } from '@/utils';
@@ -65,6 +68,7 @@ export function LiveScoutFutsalScreen() {
   const [matchFinished, setMatchFinished] = useState(false);
   const [showPositionSwapMode, setShowPositionSwapMode] = useState(false);
   const [selectedPlayerForPositionSwap, setSelectedPlayerForPositionSwap] = useState<typeof matchPlayers[0] | null>(null);
+  const [showStatsModal, setShowStatsModal] = useState(false);
   // wall-clock timestamps (ms) when each player entered the bench
   const benchStartTimestamps = useRef<Record<string, number>>({});
   // elapsed seconds when timer was paused for each bench player
@@ -841,12 +845,29 @@ export function LiveScoutFutsalScreen() {
         {/* Match Info and Controls */}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 6 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
-              {match.team_name} vs {match.opponent_name}
-            </Text>
-            <Text style={{ color: '#9ca3af', fontSize: 11, marginTop: 2 }}>
-              Jogadores: {positionedPlayers.length}/{maxPlayers}
-            </Text>
+            {period > 0 ? (
+              <TouchableOpacity 
+                onPress={() => setShowStatsModal(true)}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+                activeOpacity={0.7}
+              >
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
+                  {live.match?.is_home ? match.team_name : match.opponent_name}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e293b', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 }}>
+                  <Text style={{ color: '#22c55e', fontSize: 16, fontWeight: '800' }}>{live.homeScore}</Text>
+                  <Text style={{ color: '#64748b', fontSize: 14, fontWeight: '700', marginHorizontal: 4 }}>×</Text>
+                  <Text style={{ color: '#f97316', fontSize: 16, fontWeight: '800' }}>{live.awayScore}</Text>
+                </View>
+                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }} numberOfLines={1}>
+                  {live.match?.is_home ? match.opponent_name : match.team_name}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={{ color: '#fff', fontSize: 14, fontWeight: '700' }} numberOfLines={1}>
+                {match.team_name} vs {match.opponent_name}
+              </Text>
+            )}
           </View>
 
           {/* Timer Controls */}
@@ -1477,6 +1498,71 @@ export function LiveScoutFutsalScreen() {
         </View>
         );
       })()}
+
+      {/* ─── Stats Modal ─────────────────────────────────────────────────────────── */}
+      <Modal
+        visible={showStatsModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowStatsModal(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#0f172a' }} edges={['top']}>
+          {/* Modal Header */}
+          <View style={{ 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            justifyContent: 'space-between',
+            paddingHorizontal: 16, 
+            paddingVertical: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: '#1e293b'
+          }}>
+            <Text style={{ color: '#fff', fontSize: 18, fontWeight: '700' }}>
+              Estatísticas da Partida
+            </Text>
+            <TouchableOpacity
+              onPress={() => setShowStatsModal(false)}
+              style={{
+                backgroundColor: '#1e293b',
+                borderRadius: 8,
+                padding: 8
+              }}
+            >
+              <Icon name="close" size={24} color="#94a3b8" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={{ flex: 1 }}>
+            {/* Totalizadores  */}
+            {live.events.length > 0 && (
+              <View style={{ marginTop: 8 }}>
+                <LiveTotalizadores
+                  events={live.events}
+                  teamName={live.match?.team_name || 'Meu Time'}
+                  opponentName={live.match?.opponent_name || 'Adversário'}
+                  isCollapsible={false}
+                />
+              </View>
+            )}
+
+            {/* Opponent Events */}
+            <View style={{ marginTop: 16 }}>
+              <OpponentEventSelector
+                matchId={live.match?.id || ''}
+                teamId={live.match?.team_id || ''}
+                events={events}
+                categories={categories}
+                currentMinute={Math.floor(elapsed / 60)}
+                currentSecond={elapsed % 60}
+                currentPeriod={period as 1 | 2}
+                onEventRecorded={() => {
+                  // Event recorded feedback
+                }}
+              />
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
 
       {/* ─── Swap Panel Overlay ───────────────────────────────────────────────── */}
       {showEventsModal && showSwapPanel && live.selectedPlayerId && period > 0 && (

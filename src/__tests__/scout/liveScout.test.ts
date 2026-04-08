@@ -27,6 +27,9 @@ jest.mock('@/database/repositories/matchRepository', () => ({
   removeMatchPlayer: jest.fn(),
   updateMatchTimer: jest.fn(),
   finalizeMatch: jest.fn(),
+  updateScore: jest.fn(),
+  incrementScore: jest.fn(),
+  decrementScore: jest.fn(),
 }));
 
 jest.mock('@/database/repositories/eventRepository', () => ({
@@ -52,6 +55,8 @@ describe('Scout Live Session Logic', () => {
         isRunning: false,
         period: 1,
         benchPausedElapsed: {},
+        homeScore: 0,
+        awayScore: 0,
       },
     });
     jest.clearAllMocks();
@@ -883,6 +888,297 @@ describe('Scout Live Session Logic', () => {
       expect(grouped[1].positionName).toBe('Fixo');
       expect(grouped[2].positionName).toBe('Ala');
       expect(grouped[3].positionName).toBe('Pivô');
+    });
+  });
+
+  // ─── Score Management ──────────────────────────────────────────────────
+  describe('Score Management', () => {
+    beforeEach(() => {
+      eventRepo.getMatchEvents.mockReturnValue([]);
+      matchRepo.getMatchPlayers.mockReturnValue(mockMatchPlayers);
+      matchRepo.updateScore = jest.fn();
+      matchRepo.incrementScore = jest.fn();
+      useMatchStore.getState().startLiveSession(mockMatch);
+    });
+
+    it('should auto-increment home score when home team scores a goal', () => {
+      // Setup: match is_home = true (home game)
+      const homeMatch = { ...mockMatch, is_home: true };
+      useMatchStore.setState((s) => ({
+        live: { ...s.live, match: homeMatch, homeScore: 0, awayScore: 0 },
+      }));
+
+      const goalEvent = createMockMatchEvent({
+        id: 'goal-home-1',
+        player_id: IDS.player5,
+        event_id: IDS.event3,
+        event_name: 'Gol',
+        minute: 10,
+        second: 30,
+        period: 1,
+        is_positive: true,
+      });
+
+      useMatchStore.getState().addLiveEvent(goalEvent);
+
+      // Verify home score incremented
+      const { live } = useMatchStore.getState();
+      expect(live.homeScore).toBe(1);
+      expect(live.awayScore).toBe(0);
+    });
+
+    it('should auto-increment away score when away team scores a goal', () => {
+      // Setup: match is_home = false (away game)
+      const awayMatch = { ...mockMatch, is_home: false };
+      useMatchStore.setState((s) => ({
+        live: { ...s.live, match: awayMatch, homeScore: 0, awayScore: 0 },
+      }));
+
+      const goalEvent = createMockMatchEvent({
+        id: 'goal-away-1',
+        player_id: IDS.player5,
+        event_id: IDS.event3,
+        event_name: 'Gol',
+        minute: 15,
+        second: 20,
+        period: 1,
+        is_positive: true,
+      });
+
+      useMatchStore.getState().addLiveEvent(goalEvent);
+
+      // Verify away score incremented (since team is playing away)
+      const { live } = useMatchStore.getState();
+      expect(live.homeScore).toBe(0);
+      expect(live.awayScore).toBe(1);
+    });
+
+    it('should allow manual score adjustment', () => {
+      useMatchStore.setState((s) => ({
+        live: { ...s.live, homeScore: 2, awayScore: 1 },
+      }));
+
+      // Manually adjust score (e.g., correction)
+      useMatchStore.getState().setScore(3, 2);
+
+      const { live } = useMatchStore.getState();
+      expect(live.homeScore).toBe(3);
+      expect(live.awayScore).toBe(2);
+    });
+
+    it('should decrement score when undoing a goal event', () => {
+      // Start with existing score
+      useMatchStore.setState((s) => ({
+        live: { ...s.live, match: { ...mockMatch, is_home: true }, homeScore: 2, awayScore: 1 },
+      }));
+
+      const goalEvent = createMockMatchEvent({
+        id: 'goal-undo',
+        player_id: IDS.player5,
+        event_id: IDS.event3,
+        event_name: 'Gol',
+        minute: 20,
+        second: 0,
+        period: 2,
+      });
+
+      // Record goal (increments to 3-1)
+      useMatchStore.getState().addLiveEvent(goalEvent);
+      expect(useMatchStore.getState().live.homeScore).toBe(3);
+
+      // Undo goal (decrements back to 2-1)
+      useMatchStore.getState().undoLastEvent();
+      expect(useMatchStore.getState().live.homeScore).toBe(2);
+    });
+
+    it('should handle multiple goals in same period', () => {
+      useMatchStore.setState((s) => ({
+        live: { ...s.live, match: { ...mockMatch, is_home: true }, homeScore: 0, awayScore: 0 },
+      }));
+
+      const goal1 = createMockMatchEvent({ id: 'g1', event_id: IDS.event3, event_name: 'Gol', minute: 5 });
+      const goal2 = createMockMatchEvent({ id: 'g2', event_id: IDS.event3, event_name: 'Gol', minute: 10 });
+      const goal3 = createMockMatchEvent({ id: 'g3', event_id: IDS.event3, event_name: 'Gol', minute: 15 });
+
+      useMatchStore.getState().addLiveEvent(goal1);
+      useMatchStore.getState().addLiveEvent(goal2);
+      useMatchStore.getState().addLiveEvent(goal3);
+
+      expect(useMatchStore.getState().live.homeScore).toBe(3);
+    });
+
+    it('should not increment score for non-goal events', () => {
+      useMatchStore.setState((s) => ({
+        live: { ...s.live, homeScore: 1, awayScore: 0 },
+      }));
+
+      const passEvent = createMockMatchEvent({
+        id: 'pass-1',
+        event_id: IDS.event1,
+        event_name: 'Passe certo',
+        minute: 5,
+      });
+
+      useMatchStore.getState().addLiveEvent(passEvent);
+
+      // Score should remain unchanged
+      expect(useMatchStore.getState().live.homeScore).toBe(1);
+      expect(useMatchStore.getState().live.awayScore).toBe(0);
+    });
+
+    it('should decrement score when deleting a goal event manually', () => {
+      useMatchStore.setState((s) => ({
+        live: { ...s.live, match: { ...mockMatch, is_home: true }, homeScore: 0, awayScore: 0 },
+      }));
+
+      const goal1 = createMockMatchEvent({ id: 'g1', event_id: IDS.event3, event_name: 'Gol', minute: 5 });
+      const goal2 = createMockMatchEvent({ id: 'g2', event_id: IDS.event3, event_name: 'Gol', minute: 10 });
+      const goal3 = createMockMatchEvent({ id: 'g3', event_id: IDS.event3, event_name: 'Gol', minute: 15 });
+
+      useMatchStore.getState().addLiveEvent(goal1);
+      useMatchStore.getState().addLiveEvent(goal2);
+      useMatchStore.getState().addLiveEvent(goal3);
+
+      expect(useMatchStore.getState().live.homeScore).toBe(3);
+      expect(useMatchStore.getState().live.events.length).toBe(3);
+
+      // Delete a goal from the middle (not last)
+      useMatchStore.getState().deleteEvent('g2');
+
+      expect(useMatchStore.getState().live.homeScore).toBe(2);
+      expect(useMatchStore.getState().live.events.length).toBe(2);
+      expect(useMatchStore.getState().live.events.find(e => e.id === 'g2')).toBeUndefined();
+    });
+  });
+
+  // ─── Opponent Events ───────────────────────────────────────────────────
+  describe('Opponent Events', () => {
+    beforeEach(() => {
+      eventRepo.getMatchEvents.mockReturnValue([]);
+      matchRepo.getMatchPlayers.mockReturnValue(mockMatchPlayers);
+      eventRepo.insertMatchEvent = jest.fn();
+      useMatchStore.getState().startLiveSession(mockMatch);
+    });
+
+    it('should record opponent event with is_opponent_event flag', () => {
+      const opponentGoal = createMockMatchEvent({
+        id: 'opp-goal-1',
+        player_id: '', // No player ID for opponent team events
+        event_id: IDS.event3,
+        event_name: 'Gol',
+        minute: 12,
+        second: 45,
+        period: 1,
+        is_positive: false, // Negative for user's perspective
+      });
+
+      // Add as opponent event
+      useMatchStore.getState().addOpponentEvent(opponentGoal);
+
+      const events = useMatchStore.getState().live.events;
+      const opponentEvent = events.find((e) => e.id === 'opp-goal-1');
+
+      expect(opponentEvent).toBeDefined();
+      expect(opponentEvent?.is_opponent_event).toBe(true);
+      expect(opponentEvent?.player_id).toBeFalsy(); // No specific player
+    });
+
+    it('should increment opponent score when opponent scores', () => {
+      // Home match: opponent is away team
+      useMatchStore.setState((s) => ({
+        live: { ...s.live, match: { ...mockMatch, is_home: true }, homeScore: 1, awayScore: 0 },
+      }));
+
+      const opponentGoal = createMockMatchEvent({
+        id: 'opp-goal-2',
+        event_id: IDS.event3,
+        event_name: 'Gol',
+        minute: 18,
+        second: 0,
+        period: 1,
+      });
+
+      useMatchStore.getState().addOpponentEvent(opponentGoal);
+
+      const { live } = useMatchStore.getState();
+      expect(live.homeScore).toBe(1);
+      expect(live.awayScore).toBe(1); // Opponent scored
+    });
+
+    it('should track opponent fouls separately from team fouls', () => {
+      const teamFoul = createMockMatchEvent({
+        id: 'team-foul-1',
+        player_id: IDS.player2,
+        event_id: 'disciplina_falta',
+        event_name: 'Falta',
+        minute: 5,
+      });
+
+      const opponentFoul = createMockMatchEvent({
+        id: 'opp-foul-1',
+        event_id: 'disciplina_falta',
+        event_name: 'Falta',
+        minute: 8,
+      });
+
+      useMatchStore.getState().addLiveEvent(teamFoul);
+      useMatchStore.getState().addOpponentEvent(opponentFoul);
+
+      const events = useMatchStore.getState().live.events;
+      const teamFouls = events.filter(
+        (e) => e.event_name === 'Falta' && !e.is_opponent_event
+      );
+      const oppFouls = events.filter(
+        (e) => e.event_name === 'Falta' && e.is_opponent_event
+      );
+
+      expect(teamFouls).toHaveLength(1);
+      expect(oppFouls).toHaveLength(1);
+    });
+
+    it('should allow opponent events for all event types', () => {
+      const opponentYellow = createMockMatchEvent({
+        id: 'opp-yellow',
+        event_id: 'disciplina_amarelo',
+        event_name: 'Cartão Amarelo',
+        minute: 10,
+      });
+
+      const opponentCorner = createMockMatchEvent({
+        id: 'opp-corner',
+        event_id: 'finalizacao_escanteio',
+        event_name: 'Escanteio',
+        minute: 15,
+      });
+
+      useMatchStore.getState().addOpponentEvent(opponentYellow);
+      useMatchStore.getState().addOpponentEvent(opponentCorner);
+
+      const events = useMatchStore.getState().live.events;
+      const opponentEvents = events.filter((e) => e.is_opponent_event);
+
+      expect(opponentEvents).toHaveLength(2);
+      expect(opponentEvents.map((e) => e.event_name)).toContain('Cartão Amarelo');
+      expect(opponentEvents.map((e) => e.event_name)).toContain('Escanteio');
+    });
+
+    it('should undo opponent event when requested', () => {
+      const opponentGoal = createMockMatchEvent({
+        id: 'opp-goal-undo',
+        event_id: IDS.event3,
+        event_name: 'Gol',
+        minute: 20,
+      });
+
+      useMatchStore.setState((s) => ({
+        live: { ...s.live, match: { ...mockMatch, is_home: true }, homeScore: 0, awayScore: 0 },
+      }));
+
+      useMatchStore.getState().addOpponentEvent(opponentGoal);
+      expect(useMatchStore.getState().live.awayScore).toBe(1);
+
+      useMatchStore.getState().undoLastEvent();
+      expect(useMatchStore.getState().live.awayScore).toBe(0);
     });
   });
 });
