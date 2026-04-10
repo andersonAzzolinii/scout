@@ -89,6 +89,43 @@ export const EVENT_CATEGORIES: EventCategory[] = [
       { id: 'assistencia_goleiro', name: 'Assistência (goleiro)', sentiment: '+' },
     ],
   },
+  {
+    id: 'perdas',
+    name: 'PERDAS',
+    icon: '⚠️',
+    events: [
+      { id: 'desarme_sofrido', name: 'Desarme sofrido', sentiment: '-' },
+      { id: 'erro_tecnico', name: 'Erro técnico (domínio/condução)', sentiment: '-' },
+    ],
+  },
+  {
+    id: 'cruzamentos',
+    name: 'CRUZAMENTOS',
+    icon: '🎯',
+    events: [
+      { id: 'cruzamento_esquerda', name: 'Cruzamento da esquerda', sentiment: '+' },
+      { id: 'cruzamento_direita', name: 'Cruzamento da direita', sentiment: '+' },
+    ],
+  },
+  {
+    id: 'segunda_bola',
+    name: 'SEGUNDA BOLA',
+    icon: '⚡',
+    events: [
+      { id: 'segunda_bola_ganha', name: 'Segunda bola ganha', sentiment: '+' },
+      { id: 'segunda_bola_perdida', name: 'Segunda bola perdida', sentiment: '-' },
+    ],
+  },
+  {
+    id: 'progressao',
+    name: 'PROGRESSÃO',
+    icon: '🚀',
+    events: [
+      { id: 'entrada_ultimo_terco_esq', name: 'Entrada último terço (esquerda)', sentiment: '+' },
+      { id: 'entrada_ultimo_terco_centro', name: 'Entrada último terço (centro)', sentiment: '+' },
+      { id: 'entrada_ultimo_terco_dir', name: 'Entrada último terço (direita)', sentiment: '+' },
+    ],
+  },
 ];
 
 /**
@@ -267,6 +304,39 @@ export const EVENT_METRIC_GROUPS: EventMetricGroup[] = [
     name: '1x1 Goleiro',
     categoryId: 'goleiro',
     eventIds: ['um_contra_um_vencido'],
+  },
+
+  // ── PERDAS ────────────────────────────────────────────────────────────────
+  {
+    id: 'perdas_bola',
+    name: 'Perdas de Bola',
+    categoryId: 'perdas',
+    eventIds: ['desarme_sofrido', 'erro_tecnico'],
+  },
+
+  // ── CRUZAMENTOS ───────────────────────────────────────────────────────────
+  {
+    id: 'cruzamentos_perigosos',
+    name: 'Cruzamentos',
+    categoryId: 'cruzamentos',
+    eventIds: ['cruzamento_esquerda', 'cruzamento_direita'],
+  },
+
+  // ── SEGUNDA BOLA ──────────────────────────────────────────────────────────
+  {
+    id: 'segunda_bola_disputas',
+    name: 'Segunda Bola',
+    categoryId: 'segunda_bola',
+    eventIds: ['segunda_bola_ganha', 'segunda_bola_perdida'],
+    successIds: ['segunda_bola_ganha'],
+  },
+
+  // ── PROGRESSÃO ────────────────────────────────────────────────────────────
+  {
+    id: 'entradas_ultimo_terco',
+    name: 'Entradas no Último Terço',
+    categoryId: 'progressao',
+    eventIds: ['entrada_ultimo_terco_esq', 'entrada_ultimo_terco_centro', 'entrada_ultimo_terco_dir'],
   },
   
 ];
