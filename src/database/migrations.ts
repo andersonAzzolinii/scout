@@ -602,4 +602,219 @@ export function runMigrations(): void {
   } catch (e) { 
     console.error('❌ Erro na migração player_id nullable:', e); 
   }
+
+  // ============================================================================
+  // MIGRAÇÃO: Corrigir FK profile_id em matches para ON DELETE CASCADE
+  // ============================================================================
+  try {
+    // Verificar se a FK já tem CASCADE (olhando no schema da tabela)
+    const fkInfo = db.getAllSync<{ sql: string }>(`
+      SELECT sql FROM sqlite_master 
+      WHERE type='table' AND name='matches';
+    `);
+    
+    const tableSchema = fkInfo[0]?.sql || '';
+    const hasProfileCascade = tableSchema.includes('profile_id') && 
+                              tableSchema.includes('ON DELETE CASCADE');
+    
+    if (!hasProfileCascade && tableSchema.includes('profile_id')) {
+      console.log('🔄 Corrigindo FK profile_id em matches para ON DELETE CASCADE...');
+      
+      // Criar nova tabela com FK correta
+      db.execSync(`
+        CREATE TABLE matches_temp (
+          id TEXT PRIMARY KEY NOT NULL,
+          team_id TEXT NOT NULL,
+          opponent_name TEXT NOT NULL DEFAULT '',
+          profile_id TEXT NOT NULL,
+          date TEXT NOT NULL,
+          location TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          is_home INTEGER NOT NULL DEFAULT 1,
+          elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+          is_timer_running INTEGER NOT NULL DEFAULT 0,
+          current_period INTEGER NOT NULL DEFAULT 1,
+          total_duration_seconds INTEGER,
+          first_half_seconds INTEGER,
+          second_half_seconds INTEGER,
+          squad_id TEXT,
+          home_score INTEGER NOT NULL DEFAULT 0,
+          away_score INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (team_id) REFERENCES teams(id),
+          FOREIGN KEY (profile_id) REFERENCES scout_profiles(id) ON DELETE CASCADE
+        );
+      `);
+      
+      // Copiar todos os dados
+      db.execSync(`
+        INSERT INTO matches_temp 
+        SELECT * FROM matches;
+      `);
+      
+      // Substituir tabela antiga
+      db.execSync(`DROP TABLE matches;`);
+      db.execSync(`ALTER TABLE matches_temp RENAME TO matches;`);
+      
+      // Recriar índices
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_matches_team_id ON matches(team_id);`);
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_matches_profile_id ON matches(profile_id);`);
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_matches_squad_id ON matches(squad_id);`);
+      
+      console.log('✅ FK profile_id em matches corrigida com ON DELETE CASCADE');
+    } else {
+      console.log('✓ FK profile_id já tem ON DELETE CASCADE - migração não necessária');
+    }
+  } catch (e) { 
+    console.error('❌ Erro na migração FK profile_id:', e); 
+  }
+
+  // ============================================================================
+  // MIGRAÇÃO: Corrigir FK team_id em matches para ON DELETE CASCADE
+  // ============================================================================
+  try {
+    const matchesFkInfo = db.getAllSync<{ sql: string }>(`
+      SELECT sql FROM sqlite_master 
+      WHERE type='table' AND name='matches';
+    `);
+    
+    const matchesSchema = matchesFkInfo[0]?.sql || '';
+    const hasTeamCascadeInMatches = matchesSchema.includes('team_id') && 
+                                    matchesSchema.match(/team_id.*REFERENCES teams\(id\) ON DELETE CASCADE/);
+    
+    if (!hasTeamCascadeInMatches && matchesSchema.includes('team_id')) {
+      console.log('🔄 Corrigindo FK team_id em matches para ON DELETE CASCADE...');
+      
+      db.execSync(`
+        CREATE TABLE matches_temp2 (
+          id TEXT PRIMARY KEY NOT NULL,
+          team_id TEXT NOT NULL,
+          opponent_name TEXT NOT NULL DEFAULT '',
+          profile_id TEXT NOT NULL,
+          date TEXT NOT NULL,
+          location TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          is_home INTEGER NOT NULL DEFAULT 1,
+          elapsed_seconds INTEGER NOT NULL DEFAULT 0,
+          is_timer_running INTEGER NOT NULL DEFAULT 0,
+          current_period INTEGER NOT NULL DEFAULT 1,
+          total_duration_seconds INTEGER,
+          first_half_seconds INTEGER,
+          second_half_seconds INTEGER,
+          squad_id TEXT,
+          home_score INTEGER NOT NULL DEFAULT 0,
+          away_score INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+          FOREIGN KEY (profile_id) REFERENCES scout_profiles(id) ON DELETE CASCADE
+        );
+      `);
+      
+      db.execSync(`INSERT INTO matches_temp2 SELECT * FROM matches;`);
+      db.execSync(`DROP TABLE matches;`);
+      db.execSync(`ALTER TABLE matches_temp2 RENAME TO matches;`);
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_matches_team_id ON matches(team_id);`);
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_matches_profile_id ON matches(profile_id);`);
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_matches_squad_id ON matches(squad_id);`);
+      
+      console.log('✅ FK team_id em matches corrigida com ON DELETE CASCADE');
+    } else {
+      console.log('✓ FK team_id em matches já tem ON DELETE CASCADE');
+    }
+  } catch (e) { 
+    console.error('❌ Erro na migração FK team_id matches:', e); 
+  }
+
+  // ============================================================================
+  // MIGRAÇÃO: Corrigir FK team_id em match_players para ON DELETE CASCADE
+  // ============================================================================
+  try {
+    const mpFkInfo = db.getAllSync<{ sql: string }>(`
+      SELECT sql FROM sqlite_master 
+      WHERE type='table' AND name='match_players';
+    `);
+    
+    const mpSchema = mpFkInfo[0]?.sql || '';
+    const hasTeamCascadeInMP = mpSchema.includes('team_id') && 
+                               mpSchema.match(/team_id.*REFERENCES teams\(id\) ON DELETE CASCADE/);
+    
+    if (!hasTeamCascadeInMP && mpSchema.includes('team_id')) {
+      console.log('🔄 Corrigindo FK team_id em match_players para ON DELETE CASCADE...');
+      
+      db.execSync(`
+        CREATE TABLE match_players_temp (
+          id TEXT PRIMARY KEY NOT NULL,
+          match_id TEXT NOT NULL,
+          player_id TEXT NOT NULL,
+          team_id TEXT NOT NULL,
+          is_starting INTEGER NOT NULL DEFAULT 1,
+          tactical_position INTEGER,
+          FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+          FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE,
+          FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+        );
+      `);
+      
+      db.execSync(`INSERT INTO match_players_temp SELECT * FROM match_players;`);
+      db.execSync(`DROP TABLE match_players;`);
+      db.execSync(`ALTER TABLE match_players_temp RENAME TO match_players;`);
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_match_players_match_id ON match_players(match_id);`);
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_match_players_player_id ON match_players(player_id);`);
+      
+      console.log('✅ FK team_id em match_players corrigida com ON DELETE CASCADE');
+    } else {
+      console.log('✓ FK team_id em match_players já tem ON DELETE CASCADE');
+    }
+  } catch (e) { 
+    console.error('❌ Erro na migração FK team_id match_players:', e); 
+  }
+
+  // ============================================================================
+  // MIGRAÇÃO: Corrigir FK team_id em match_events para ON DELETE CASCADE
+  // ============================================================================
+  try {
+    const meFkInfo = db.getAllSync<{ sql: string }>(`
+      SELECT sql FROM sqlite_master 
+      WHERE type='table' AND name='match_events';
+    `);
+    
+    const meSchema = meFkInfo[0]?.sql || '';
+    const hasTeamCascadeInME = meSchema.includes('team_id') && 
+                               meSchema.match(/team_id.*REFERENCES teams\(id\) ON DELETE CASCADE/);
+    
+    if (!hasTeamCascadeInME && meSchema.includes('team_id')) {
+      console.log('🔄 Corrigindo FK team_id em match_events para ON DELETE CASCADE...');
+      
+      db.execSync(`
+        CREATE TABLE match_events_temp2 (
+          id TEXT PRIMARY KEY NOT NULL,
+          match_id TEXT NOT NULL,
+          team_id TEXT NOT NULL,
+          player_id TEXT,
+          event_id TEXT NOT NULL,
+          minute INTEGER NOT NULL DEFAULT 0,
+          second INTEGER NOT NULL DEFAULT 0,
+          period INTEGER NOT NULL DEFAULT 1,
+          x REAL,
+          y REAL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          is_opponent_event INTEGER NOT NULL DEFAULT 0,
+          FOREIGN KEY (match_id) REFERENCES matches(id) ON DELETE CASCADE,
+          FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+          FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE,
+          FOREIGN KEY (event_id) REFERENCES scout_events(id) ON DELETE CASCADE
+        );
+      `);
+      
+      db.execSync(`INSERT INTO match_events_temp2 SELECT * FROM match_events;`);
+      db.execSync(`DROP TABLE match_events;`);
+      db.execSync(`ALTER TABLE match_events_temp2 RENAME TO match_events;`);
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_match_events_match_id ON match_events(match_id);`);
+      db.execSync(`CREATE INDEX IF NOT EXISTS idx_match_events_player_id ON match_events(player_id);`);
+      
+      console.log('✅ FK team_id em match_events corrigida com ON DELETE CASCADE');
+    } else {
+      console.log('✓ FK team_id em match_events já tem ON DELETE CASCADE');
+    }
+  } catch (e) { 
+    console.error('❌ Erro na migração FK team_id match_events:', e); 
+  }
 }
