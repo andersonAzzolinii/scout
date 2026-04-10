@@ -30,6 +30,7 @@ import * as profileRepo from '@/database/repositories/profileRepository';
 import * as benchRepo from '@/database/repositories/benchRepository';
 import * as fieldRepo from '@/database/repositories/fieldRepository';
 import { EVENT_CATEGORIES } from '@/constants/eventCategories';
+import { STATS_METRICS, eventMatchesMetric } from '@/constants/stats.constants';
 
 type Route = RouteProp<RootStackParamList, 'LiveScout'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -269,6 +270,14 @@ export function LiveScoutFutsalScreen() {
     if (!goleiroCategoryId) return events;
     return events.filter(event => event.category_id !== goleiroCategoryId);
   }, [events, categories, live.selectedPlayerId, positionedPlayers]);
+
+  // No modo stats (adversário), não mostrar categoria de goleiro
+  const displayCategories = useMemo(() => {
+    if (!showStatsMode) return categories;
+    const goleiroCategory = categories.find(c => c.name.toUpperCase() === 'GOLEIRO');
+    if (!goleiroCategory) return categories;
+    return categories.filter(cat => cat.id !== goleiroCategory.id);
+  }, [showStatsMode, categories]);
 
   // Independent interval to keep bench timers ticking
   useEffect(() => {
@@ -1148,7 +1157,7 @@ export function LiveScoutFutsalScreen() {
               )}
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {categories.map((category) => {
+              {displayCategories.map((category) => {
                 const catEvents = (showStatsMode ? events : filteredEvents).filter(e => e.category_id === category.id && !e.is_positive);
                 if (catEvents.length === 0) return null;
                 return (
@@ -1158,7 +1167,6 @@ export function LiveScoutFutsalScreen() {
                     </Text>
                     {catEvents.map((evt) => {
                       const playerCount = live.events.filter(e => e.event_id === evt.id && e.player_id === live.selectedPlayerId && !e.is_opponent_event).length;
-                      const teamCount = live.events.filter(e => e.event_id === evt.id && !e.is_opponent_event).length;
                       const opponentCount = live.events.filter(e => e.event_id === evt.id && e.is_opponent_event).length;
                       return (
                         <TouchableOpacity
@@ -1172,10 +1180,7 @@ export function LiveScoutFutsalScreen() {
                             {showStatsMode ? (
                               <Text style={{ color: '#ef4444', fontSize: 15, fontWeight: '800' }}>{opponentCount}</Text>
                             ) : (
-                              <>
-                                <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '800', lineHeight: 16 }}>{playerCount}</Text>
-                                <Text style={{ color: '#9ca3af', fontSize: 9, fontWeight: '600', lineHeight: 11 }}>{teamCount}T</Text>
-                              </>
+                              <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '800', lineHeight: 16 }}>{playerCount}</Text>
                             )}
                           </View>
                           <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
@@ -1275,7 +1280,7 @@ export function LiveScoutFutsalScreen() {
               )}
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {categories.map((category) => {
+              {displayCategories.map((category) => {
                 const catEvents = (showStatsMode ? events : filteredEvents).filter(e => e.category_id === category.id && e.is_positive);
                 if (catEvents.length === 0) return null;
                 return (
@@ -1285,7 +1290,6 @@ export function LiveScoutFutsalScreen() {
                     </Text>
                     {catEvents.map((evt) => {
                       const playerCount = live.events.filter(e => e.event_id === evt.id && e.player_id === live.selectedPlayerId && !e.is_opponent_event).length;
-                      const teamCount = live.events.filter(e => e.event_id === evt.id && !e.is_opponent_event).length;
                       const opponentCount = live.events.filter(e => e.event_id === evt.id && e.is_opponent_event).length;
                       return (
                         <TouchableOpacity
@@ -1299,10 +1303,7 @@ export function LiveScoutFutsalScreen() {
                             {showStatsMode ? (
                               <Text style={{ color: '#22c55e', fontSize: 15, fontWeight: '800' }}>{opponentCount}</Text>
                             ) : (
-                              <>
-                                <Text style={{ color: '#22c55e', fontSize: 14, fontWeight: '800', lineHeight: 16 }}>{playerCount}</Text>
-                                <Text style={{ color: '#9ca3af', fontSize: 9, fontWeight: '600', lineHeight: 11 }}>{teamCount}T</Text>
-                              </>
+                              <Text style={{ color: '#22c55e', fontSize: 14, fontWeight: '800', lineHeight: 16 }}>{playerCount}</Text>
                             )}
                           </View>
                           <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
@@ -1434,50 +1435,29 @@ export function LiveScoutFutsalScreen() {
 
       {/* ─── Stats Comparison Bars (when in showStatsMode) ───────────────────────── */}
       {showStatsMode && !showSwapPanel && !showPositionSwapMode && (period > 0 || matchFinished) && (() => {
-        // Define main stats metrics
-        const statsMetrics = [
-          { key: 'shots', label: 'Finalizações', icon: 'soccer' },
-          { key: 'shots_on_goal', label: 'Fin. ao Gol', icon: 'soccer' },
-          { key: 'corners', label: 'Escanteios', icon: 'flag' },
-          { key: 'fouls', label: 'Faltas', icon: 'whistle' },
-          { key: 'yellow_cards', label: 'Cartões Amarelos', icon: 'card' },
-          { key: 'red_cards', label: 'Cartões Vermelhos', icon: 'card' }
-        ];
-
         // Calculate stats for each metric
         const calculateStats = () => {
           const stats: any = {};
           
-          // Filter events by selected period
-          const filteredEvents = selectedStatsPeriod === 'all' 
-            ? live.events 
-            : live.events.filter(e => e.period === selectedStatsPeriod);
+          // Find goalkeeper category to exclude from stats
+          const goleiroCategory = categories.find(c => c.name.toUpperCase() === 'GOLEIRO');
+          const goleiroCategoryId = goleiroCategory?.id;
           
-          statsMetrics.forEach(metric => {
+          // Filter events by selected period and exclude goalkeeper events
+          const filteredEvents = (selectedStatsPeriod === 'all' 
+            ? live.events 
+            : live.events.filter(e => e.period === selectedStatsPeriod)
+          ).filter(e => !goleiroCategoryId || e.category_id !== goleiroCategoryId);
+          
+          STATS_METRICS.forEach(metric => {
             // Count my team events
             const myCount = filteredEvents.filter(e => 
-              !e.is_opponent_event && 
-              (
-                (metric.key === 'shots' && (e.event_name?.toLowerCase().includes('finaliza') || e.event_name?.toLowerCase().includes('chute'))) ||
-                (metric.key === 'shots_on_goal' && (e.event_name?.toLowerCase().includes('gol') || e.event_name?.toLowerCase().includes('no gol') || e.event_name?.toLowerCase().includes('ao gol'))) ||
-                (metric.key === 'corners' && e.event_name?.toLowerCase().includes('escanteio')) ||
-                (metric.key === 'fouls' && e.event_name?.toLowerCase().includes('falta')) ||
-                (metric.key === 'yellow_cards' && e.event_name?.toLowerCase().includes('amarelo')) ||
-                (metric.key === 'red_cards' && e.event_name?.toLowerCase().includes('vermelho'))
-              )
+              !e.is_opponent_event && eventMatchesMetric(e.event_name, metric)
             ).length;
 
             // Count opponent events
             const oppCount = filteredEvents.filter(e => 
-              e.is_opponent_event && 
-              (
-                (metric.key === 'shots' && (e.event_name?.toLowerCase().includes('finaliza') || e.event_name?.toLowerCase().includes('chute'))) ||
-                (metric.key === 'shots_on_goal' && (e.event_name?.toLowerCase().includes('gol') || e.event_name?.toLowerCase().includes('no gol') || e.event_name?.toLowerCase().includes('ao gol'))) ||
-                (metric.key === 'corners' && e.event_name?.toLowerCase().includes('escanteio')) ||
-                (metric.key === 'fouls' && e.event_name?.toLowerCase().includes('falta')) ||
-                (metric.key === 'yellow_cards' && e.event_name?.toLowerCase().includes('amarelo')) ||
-                (metric.key === 'red_cards' && e.event_name?.toLowerCase().includes('vermelho'))
-              )
+              e.is_opponent_event && eventMatchesMetric(e.event_name, metric)
             ).length;
 
             stats[metric.key] = { my: myCount, opponent: oppCount };
@@ -1488,7 +1468,7 @@ export function LiveScoutFutsalScreen() {
 
         const stats = calculateStats();
 
-        const renderStatBar = (metric: typeof statsMetrics[0]) => {
+        const renderStatBar = (metric: typeof STATS_METRICS[0]) => {
           const myValue = stats[metric.key].my;
           const oppValue = stats[metric.key].opponent;
           const total = myValue + oppValue;
@@ -1520,15 +1500,7 @@ export function LiveScoutFutsalScreen() {
                   <TouchableOpacity
                     onPress={() => {
                       const eventToRemove = live.events.find(e => 
-                        e.is_opponent_event && 
-                        (
-                          (metric.key === 'shots' && (e.event_name?.toLowerCase().includes('finaliza') || e.event_name?.toLowerCase().includes('chute'))) ||
-                          (metric.key === 'shots_on_goal' && (e.event_name?.toLowerCase().includes('gol') || e.event_name?.toLowerCase().includes('no gol') || e.event_name?.toLowerCase().includes('ao gol'))) ||
-                          (metric.key === 'corners' && e.event_name?.toLowerCase().includes('escanteio')) ||
-                          (metric.key === 'fouls' && e.event_name?.toLowerCase().includes('falta')) ||
-                          (metric.key === 'yellow_cards' && e.event_name?.toLowerCase().includes('amarelo')) ||
-                          (metric.key === 'red_cards' && e.event_name?.toLowerCase().includes('vermelho'))
-                        )
+                        e.is_opponent_event && eventMatchesMetric(e.event_name, metric)
                       );
                       if (eventToRemove) {
                         deleteEvent(eventToRemove.id);
@@ -1550,16 +1522,7 @@ export function LiveScoutFutsalScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => {
-                      const realEvent = events.find(e => {
-                        const n = e.name?.toLowerCase() ?? '';
-                        if (metric.key === 'shots') return n.includes('finaliza') || n.includes('chute');
-                        if (metric.key === 'shots_on_goal') return n.includes('gol') || n.includes('no gol') || n.includes('ao gol');
-                        if (metric.key === 'corners') return n.includes('escanteio');
-                        if (metric.key === 'fouls') return n.includes('falta');
-                        if (metric.key === 'yellow_cards') return n.includes('amarelo');
-                        if (metric.key === 'red_cards') return n.includes('vermelho');
-                        return false;
-                      });
+                      const realEvent = events.find(e => eventMatchesMetric(e.name, metric));
                       if (!realEvent) {
                         Alert.alert('Evento não encontrado', 'Nenhum evento correspondente foi configurado no perfil.');
                         return;
@@ -1702,7 +1665,7 @@ export function LiveScoutFutsalScreen() {
               style={{ maxHeight: 280 }}
               contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
             >
-              {statsMetrics.map(metric => renderStatBar(metric))}
+              {STATS_METRICS.map(metric => renderStatBar(metric))}
             </ScrollView>
           </View>
         );

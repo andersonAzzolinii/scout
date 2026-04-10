@@ -4,6 +4,8 @@
 export { useFutsalPositions } from './useFutsalPositions';
 export { useMatchTimer } from './useMatchTimer';
 export { useBenchPanel } from './useBenchPanel';
+export { useFieldTimers } from './useFieldTimers';
+export { useBenchTimers } from './useBenchTimers';
 
 // Dashboard hooks
 export { useDashboardMetrics } from './useDashboardMetrics';

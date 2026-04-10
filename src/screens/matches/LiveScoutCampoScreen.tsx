@@ -29,6 +29,7 @@ import * as matchRepo from '@/database/repositories/matchRepository';
 import * as profileRepo from '@/database/repositories/profileRepository';
 import * as fieldRepo from '@/database/repositories/fieldRepository';
 import { EVENT_CATEGORIES } from '@/constants/eventCategories';
+import { STATS_METRICS, eventMatchesMetric } from '@/constants/stats.constants';
 
 type Route = RouteProp<RootStackParamList, 'LiveScout'>;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -46,6 +47,7 @@ export function LiveScoutCampoScreen() {
     endLiveSession,
     setSelectedPlayer,
     addLiveEvent,
+    addOpponentEvent,
     deleteEvent,
     undoLastEvent,
     setTimer,
@@ -66,6 +68,9 @@ export function LiveScoutCampoScreen() {
   const [showPositionSwapMode, setShowPositionSwapMode] = useState(false);
   const [selectedPlayerForPositionSwap, setSelectedPlayerForPositionSwap] = useState<typeof matchPlayers[0] | null>(null);
   const [showStatsModal, setShowStatsModal] = useState(false);
+  const [showStatsMode, setShowStatsMode] = useState(false);
+  const [statsTeamSide, setStatsTeamSide] = useState<'team' | 'opponent'>('team');
+  const [selectedStatsPeriod, setSelectedStatsPeriod] = useState<'all' | 1 | 2>('all');
   // wall-clock timestamps (ms) when each player entered the field
   const fieldStartTimestamps = useRef<Record<string, number>>({});
   // Animation for bench panel
@@ -182,6 +187,14 @@ export function LiveScoutCampoScreen() {
     return events.filter(event => event.category_id !== goleiroCategoryId);
   }, [events, categories, live.selectedPlayerId, positionedPlayers]);
 
+  // No modo stats (adversário), não mostrar categoria de goleiro
+  const displayCategories = useMemo(() => {
+    if (!showStatsMode) return categories;
+    const goleiroCategory = categories.find(c => c.name.toUpperCase() === 'GOLEIRO');
+    if (!goleiroCategory) return categories;
+    return categories.filter(cat => cat.id !== goleiroCategory.id);
+  }, [showStatsMode, categories]);
+
   // Close events modal on hardware back button
   useEffect(() => {
     if (!showEventsModal) return;
@@ -212,9 +225,22 @@ export function LiveScoutCampoScreen() {
     return () => subscription.remove();
   }, [showPositionSwapMode]);
 
+  // Close stats mode on hardware back button
+  useEffect(() => {
+    if (!showStatsMode) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      setShowStatsMode(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [showStatsMode]);
+
   // Pause timer when back button is pressed
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      // Se o modo de estatísticas está ativo, deixar o outro handler lidar
+      if (showStatsMode) return false;
+      
       // Se o modo de troca de posição está ativo, deixar o outro handler lidar
       if (showPositionSwapMode) return false;
       
@@ -234,7 +260,7 @@ export function LiveScoutCampoScreen() {
       return false;
     });
     return () => subscription.remove();
-  }, [benchExpanded, showEventsModal, isRunning, toggleTimer]);
+  }, [benchExpanded, showEventsModal, showStatsMode, isRunning, toggleTimer]);
 
   // Salvar elapsed dos jogadores em campo ao sair da tela (blur/unmount)
   // e restaurar corretamente ao voltar (focus), sem contar o tempo fora
@@ -707,6 +733,48 @@ export function LiveScoutCampoScreen() {
     addLiveEvent(newEvent);
   };
 
+  const handleStatsEventPress = (scoutEvent: ScoutEvent, isPositive: boolean) => {
+    if (!match) return;
+
+    // Validação: não permitir eventos antes de iniciar
+    if (matchFinished) return;
+    if (period === 0) {
+      Alert.alert(
+        'Partida Não Iniciada',
+        'Inicie o cronômetro para começar a registrar eventos.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    const minute = Math.floor(elapsed / 60);
+    const second = elapsed % 60;
+
+    const newEvent: MatchEvent = {
+      id: generateId(),
+      match_id: match.id,
+      team_id: match.team_id,
+      player_id: null, // Evento sem jogador específico
+      event_id: scoutEvent.id,
+      minute,
+      second,
+      period,
+      x: null,
+      y: null,
+      created_at: new Date().toISOString(),
+      event_name: scoutEvent.name,
+      event_icon: scoutEvent.icon,
+      event_type: scoutEvent.event_type,
+      is_positive: scoutEvent.is_positive,
+    };
+
+    // Sempre registrar eventos do adversário no modo stats
+    addOpponentEvent({
+      ...newEvent,
+      is_opponent_event: true,
+    });
+  };
+
   if (!match) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-950">
@@ -727,7 +795,10 @@ export function LiveScoutCampoScreen() {
           <View style={{ flex: 1 }}>
             {period > 0 ? (
               <TouchableOpacity 
-                onPress={() => setShowStatsModal(true)}
+                onPress={() => {
+                  setShowStatsMode(true);
+                  setShowEventsModal(false);
+                }}
                 style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
                 activeOpacity={0.7}
               >
@@ -942,7 +1013,7 @@ export function LiveScoutCampoScreen() {
         <View className="flex-1 flex-row">
 
           {/* Left: Negative Events Panel */}
-          {showEventsModal && live.selectedPlayerId && (period > 0 || matchFinished) && !showPositionSwapMode && (
+          {((showEventsModal && live.selectedPlayerId) || showStatsMode) && (period > 0 || matchFinished) && !showPositionSwapMode && (
             <View style={{ width: 140, backgroundColor: '#0a0d14', borderRightWidth: 1, borderRightColor: '#1f2937' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(239,68,68,0.07)' : 'rgba(251,191,36,0.10)' }}>
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#ef4444' : '#fbbf24' }} />
@@ -954,30 +1025,38 @@ export function LiveScoutCampoScreen() {
                 )}
               </View>
               <ScrollView showsVerticalScrollIndicator={false}>
-                {categories.map((category) => {
-                  const catEvents = filteredEvents.filter(e => e.category_id === category.id && !e.is_positive);
+                {displayCategories.map((category) => {
+                  const catEvents = (showStatsMode ? events : filteredEvents).filter(e => e.category_id === category.id && !e.is_positive);
                   if (catEvents.length === 0) return null;
                   return (
                     <View key={category.id}>
                       <Text style={{ color: '#4b5563', fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
                         {category.name}
                       </Text>
-                      {catEvents.map((evt) => (
-                        <TouchableOpacity
-                          key={evt.id}
-                          onPress={() => handleEventPress(evt)}
-                          activeOpacity={0.55}
-                          disabled={matchFinished}
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(239,68,68,0.04)', opacity: matchFinished ? 0.35 : 1 }}
-                        >
-                          <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexShrink: 0 }}>
-                            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
-                          </View>
-                          <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
-                            {evt.name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                      {catEvents.map((evt) => {
+                        const playerCount = live.events.filter(e => e.event_id === evt.id && e.player_id === live.selectedPlayerId && !e.is_opponent_event).length;
+                        const opponentCount = live.events.filter(e => e.event_id === evt.id && e.is_opponent_event).length;
+                        return (
+                          <TouchableOpacity
+                            key={evt.id}
+                            onPress={() => showStatsMode ? handleStatsEventPress(evt, false) : handleEventPress(evt)}
+                            activeOpacity={0.55}
+                            disabled={matchFinished}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(239,68,68,0.04)', opacity: matchFinished ? 0.35 : 1 }}
+                          >
+                            <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexShrink: 0 }}>
+                              {showStatsMode ? (
+                                <Text style={{ color: '#ef4444', fontSize: 15, fontWeight: '800' }}>{opponentCount}</Text>
+                              ) : (
+                                <Text style={{ color: '#ef4444', fontSize: 14, fontWeight: '800', lineHeight: 16 }}>{playerCount}</Text>
+                              )}
+                            </View>
+                            <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
+                              {evt.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
                   );
                 })}
@@ -990,7 +1069,7 @@ export function LiveScoutCampoScreen() {
             <CourtRenderer
               sportType={sportType as any}
               width={Math.min(
-                (screenWidth - (showEventsModal && live.selectedPlayerId && !showPositionSwapMode ? 280 : 0)) * 0.96,
+                (screenWidth - (((showEventsModal && live.selectedPlayerId) || showStatsMode) && !showPositionSwapMode ? 280 : 0)) * 0.96,
                 (screenHeight - insets.top - 130) * (2 / 3)
               )}
               onPositionPress={handlePositionPress}
@@ -1011,12 +1090,47 @@ export function LiveScoutCampoScreen() {
                 return fieldStartTimestamps.current[playerId];
               }}
               isTimerRunning={isRunning}
-              showEventsModal={showEventsModal && !showPositionSwapMode}
+              showEventsModal={(showEventsModal || showStatsMode) && !showPositionSwapMode}
             />
+            {showStatsMode && (
+              <View style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.6)',
+                justifyContent: 'center',
+                alignItems: 'center',
+                zIndex: 5,
+                pointerEvents: 'none'
+              }}>
+                <View style={{
+                  backgroundColor: 'rgba(10, 13, 20, 0.95)',
+                  paddingHorizontal: 24,
+                  paddingVertical: 16,
+                  borderRadius: 12,
+                  borderWidth: 2,
+                  borderColor: '#fb923c',
+                  shadowColor: '#fb923c',
+                  shadowOffset: { width: 0, height: 0 },
+                  shadowOpacity: 0.5,
+                  shadowRadius: 10
+                }}>
+                  <Text style={{
+                    color: '#fb923c',
+                    fontSize: 20,
+                    fontWeight: 'bold',
+                    textTransform: 'uppercase',
+                    letterSpacing: 1
+                  }}>MODO ESTATÍSTICAS</Text>
+                </View>
+              </View>
+            )}
           </View>
 
           {/* Right: Positive Events Panel */}
-          {showEventsModal && live.selectedPlayerId && (period > 0 || matchFinished) && !showPositionSwapMode && (
+          {((showEventsModal && live.selectedPlayerId) || showStatsMode) && (period > 0 || matchFinished) && !showPositionSwapMode && (
             <View style={{ width: 140, backgroundColor: '#0a0d14', borderLeftWidth: 1, borderLeftColor: '#1f2937' }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#1f2937', backgroundColor: isRunning ? 'rgba(34,197,94,0.07)' : 'rgba(251,191,36,0.10)' }}>
                 <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isRunning ? '#22c55e' : '#fbbf24' }} />
@@ -1028,30 +1142,38 @@ export function LiveScoutCampoScreen() {
                 )}
               </View>
               <ScrollView showsVerticalScrollIndicator={false}>
-                {categories.map((category) => {
-                  const catEvents = filteredEvents.filter(e => e.category_id === category.id && e.is_positive);
+                {displayCategories.map((category) => {
+                  const catEvents = (showStatsMode ? events : filteredEvents).filter(e => e.category_id === category.id && e.is_positive);
                   if (catEvents.length === 0) return null;
                   return (
                     <View key={category.id}>
                       <Text style={{ color: '#4b5563', fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
                         {category.name}
                       </Text>
-                      {catEvents.map((evt) => (
-                        <TouchableOpacity
-                          key={evt.id}
-                          onPress={() => handleEventPress(evt)}
-                          activeOpacity={0.55}
-                          disabled={matchFinished}
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(34,197,94,0.04)', opacity: matchFinished ? 0.35 : 1 }}
-                        >
-                          <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', flexShrink: 0 }}>
-                            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e' }} />
-                          </View>
-                          <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
-                            {evt.name}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                      {catEvents.map((evt) => {
+                        const playerCount = live.events.filter(e => e.event_id === evt.id && e.player_id === live.selectedPlayerId && !e.is_opponent_event).length;
+                        const opponentCount = live.events.filter(e => e.event_id === evt.id && e.is_opponent_event).length;
+                        return (
+                          <TouchableOpacity
+                            key={evt.id}
+                            onPress={() => showStatsMode ? handleStatsEventPress(evt, true) : handleEventPress(evt)}
+                            activeOpacity={0.55}
+                            disabled={matchFinished}
+                            style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(34,197,94,0.04)', opacity: matchFinished ? 0.35 : 1 }}
+                          >
+                            <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', flexShrink: 0 }}>
+                              {showStatsMode ? (
+                                <Text style={{ color: '#22c55e', fontSize: 15, fontWeight: '800' }}>{opponentCount}</Text>
+                              ) : (
+                                <Text style={{ color: '#22c55e', fontSize: 14, fontWeight: '800', lineHeight: 16 }}>{playerCount}</Text>
+                              )}
+                            </View>
+                            <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
+                              {evt.name}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
                   );
                 })}
@@ -1071,7 +1193,7 @@ export function LiveScoutCampoScreen() {
         </View>
 
         {/* Bottom: Bench Players (minimizable) */}
-        {availablePlayers.length > 0 && !showEventsModal && (
+        {availablePlayers.length > 0 && !showEventsModal && !showStatsMode && (
           <View style={{
             position: 'absolute',
             bottom: 0,
@@ -1169,6 +1291,240 @@ export function LiveScoutCampoScreen() {
           </View>
         )}
       </View>
+
+      {/* ─── Stats Mode Comparison Bars ─────────────────────────────────────────────────── */}
+      {showStatsMode && (period > 0 || matchFinished) && (() => {
+        // Calculate stats for each metric
+        const calculateStats = () => {
+          const stats: any = {};
+          
+          // Find goalkeeper category to exclude from stats
+          const goleiroCategory = categories.find(c => c.name.toUpperCase() === 'GOLEIRO');
+          const goleiroCategoryId = goleiroCategory?.id;
+          
+          // Filter events by selected period and exclude goalkeeper events
+          const filteredEvents = (selectedStatsPeriod === 'all' 
+            ? live.events 
+            : live.events.filter(e => e.period === selectedStatsPeriod)
+          ).filter(e => !goleiroCategoryId || e.category_id !== goleiroCategoryId);
+          
+          STATS_METRICS.forEach(metric => {
+            // Count my team events
+            const myCount = filteredEvents.filter(e => 
+              !e.is_opponent_event && eventMatchesMetric(e.event_name, metric)
+            ).length;
+
+            // Count opponent events
+            const oppCount = filteredEvents.filter(e => 
+              e.is_opponent_event && eventMatchesMetric(e.event_name, metric)
+            ).length;
+
+            stats[metric.key] = { my: myCount, opponent: oppCount };
+          });
+
+          return stats;
+        };
+
+        const stats = calculateStats();
+
+        const renderStatBar = (metric: typeof STATS_METRICS[0]) => {
+          const myValue = stats[metric.key].my;
+          const oppValue = stats[metric.key].opponent;
+          const total = myValue + oppValue;
+
+          return (
+            <View key={metric.key} style={{ marginBottom: 14 }}>
+              {/* Values and label */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, position: 'relative' }}>
+                <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '700', flex: 1, textAlign: 'left' }}>
+                  {myValue}
+                </Text>
+                {/* Label absolutamente centralizado */}
+                <Text style={{ 
+                  position: 'absolute', left: 0, right: 0, 
+                  color: '#94a3b8', fontSize: 11, fontWeight: '600', 
+                  textTransform: 'uppercase', textAlign: 'center' 
+                }}>
+                  {metric.label}
+                </Text>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 6 }}>
+                  <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '700', textAlign: 'right' }}>
+                    {oppValue}
+                  </Text>
+                  {/* Edit buttons for opponent */}
+                  <TouchableOpacity
+                    onPress={() => {
+                      const eventToRemove = live.events.find(e => 
+                        e.is_opponent_event && eventMatchesMetric(e.event_name, metric)
+                      );
+                      if (eventToRemove) {
+                        deleteEvent(eventToRemove.id);
+                      }
+                    }}
+                    style={{ 
+                      backgroundColor: '#1f2937', 
+                      borderRadius: 4, 
+                      width: 22, 
+                      height: 22, 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: '#374151'
+                    }}
+                    disabled={oppValue === 0}
+                  >
+                    <Icon name="minus" size={12} color={oppValue === 0 ? '#4b5563' : '#fb923c'} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const realEvent = events.find(e => eventMatchesMetric(e.name, metric));
+                      if (!realEvent) {
+                        Alert.alert('Evento não encontrado', 'Nenhum evento correspondente foi configurado no perfil.');
+                        return;
+                      }
+                      handleStatsEventPress(realEvent, true);
+                    }}
+                    style={{ 
+                      backgroundColor: '#1f2937', 
+                      borderRadius: 4, 
+                      width: 22, 
+                      height: 22, 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      borderWidth: 1,
+                      borderColor: '#374151'
+                    }}
+                  >
+                    <Icon name="plus" size={12} color="#fb923c" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Bar - duas divs com gap de 2px, cada uma cresce para fora */}
+              <View style={{ height: 6, flexDirection: 'row', gap: 4 }}>
+                <View style={{ flex: 1, alignItems: 'flex-end', backgroundColor: '#1f2937', borderRadius: 3 }}>
+                  <View style={{ 
+                    width: total > 0 ? `${(myValue / total) * 100}%` : '0%',
+                    height: '100%', 
+                    backgroundColor: myValue > oppValue ? '#dc2626' : '#ffffff',
+                    borderRadius: 3
+                  }} />
+                </View>
+                <View style={{ flex: 1, alignItems: 'flex-start', backgroundColor: '#1f2937', borderRadius: 3 }}>
+                  <View style={{ 
+                    width: total > 0 ? `${(oppValue / total) * 100}%` : '0%',
+                    height: '100%', 
+                    backgroundColor: oppValue > myValue ? '#dc2626' : '#ffffff',
+                    borderRadius: 3
+                  }} />
+                </View>
+              </View>
+            </View>
+          );
+        };
+
+        // Check if there are events in both periods
+        const hasFirstHalf = live.events.some(e => e.period === 1);
+        const hasSecondHalf = live.events.some(e => e.period === 2);
+        const showPeriodFilter = hasFirstHalf && hasSecondHalf;
+
+        return (
+          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20, backgroundColor: 'rgba(11, 17, 32, 0.98)', borderTopWidth: 1, borderTopColor: '#1f2937', paddingBottom: insets.bottom + 10 }}>
+            {!isRunning && (
+              <View style={{ backgroundColor: matchFinished ? 'rgba(107,114,128,0.15)' : 'rgba(251,191,36,0.15)', borderBottomWidth: 1, borderBottomColor: matchFinished ? '#6b7280' : '#fbbf24', paddingVertical: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Icon name={matchFinished ? "flag-checkered" : "pause-circle"} size={16} color={matchFinished ? '#9ca3af' : '#fbbf24'} />
+                <Text style={{ color: matchFinished ? '#9ca3af' : '#fbbf24', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 }}>{matchFinished ? 'PARTIDA ENCERRADA' : 'CRONÔMETRO PAUSADO'}</Text>
+              </View>
+            )}
+            
+            {/* Period Filter Tabs */}
+            {showPeriodFilter && (
+              <View style={{ 
+                flexDirection: 'row', 
+                paddingHorizontal: 16, 
+                paddingTop: 12,
+                paddingBottom: 8,
+                gap: 8,
+                borderBottomWidth: 1,
+                borderBottomColor: '#1f2937'
+              }}>
+                <TouchableOpacity
+                  onPress={() => setSelectedStatsPeriod('all')}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 8,
+                    backgroundColor: selectedStatsPeriod === 'all' ? '#3b82f6' : '#1f2937',
+                    borderWidth: 1,
+                    borderColor: selectedStatsPeriod === 'all' ? '#60a5fa' : '#374151'
+                  }}
+                >
+                  <Text style={{ 
+                    color: selectedStatsPeriod === 'all' ? '#ffffff' : '#9ca3af', 
+                    fontSize: 11, 
+                    fontWeight: '700',
+                    textAlign: 'center'
+                  }}>
+                    GERAL
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  onPress={() => setSelectedStatsPeriod(1)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 8,
+                    backgroundColor: selectedStatsPeriod === 1 ? '#3b82f6' : '#1f2937',
+                    borderWidth: 1,
+                    borderColor: selectedStatsPeriod === 1 ? '#60a5fa' : '#374151'
+                  }}
+                >
+                  <Text style={{ 
+                    color: selectedStatsPeriod === 1 ? '#ffffff' : '#9ca3af', 
+                    fontSize: 11, 
+                    fontWeight: '700',
+                    textAlign: 'center'
+                  }}>
+                    1º TEMPO
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  onPress={() => setSelectedStatsPeriod(2)}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 8,
+                    paddingHorizontal: 12,
+                    borderRadius: 8,
+                    backgroundColor: selectedStatsPeriod === 2 ? '#3b82f6' : '#1f2937',
+                    borderWidth: 1,
+                    borderColor: selectedStatsPeriod === 2 ? '#60a5fa' : '#374151'
+                  }}
+                >
+                  <Text style={{ 
+                    color: selectedStatsPeriod === 2 ? '#ffffff' : '#9ca3af', 
+                    fontSize: 11, 
+                    fontWeight: '700',
+                    textAlign: 'center'
+                  }}>
+                    2º TEMPO
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            
+            <ScrollView 
+              style={{ maxHeight: 280 }}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
+            >
+              {STATS_METRICS.map(metric => renderStatBar(metric))}
+            </ScrollView>
+          </View>
+        );
+      })()}
 
       {/* ─── Bottom Action Bar ─────────────────────────────────────────────────── */}
       {showEventsModal && live.selectedPlayerId && !showSwapPanel && !showPositionSwapMode && (period > 0 || matchFinished) && (() => {
@@ -1298,7 +1654,7 @@ export function LiveScoutCampoScreen() {
         );
       })()}
 
-      {/* Stats Modal */}
+      {/* ─── Stats Modal ─────────────────────────────────────────────────────────── */}
       <Modal
         visible={showStatsModal}
         animationType="slide"
@@ -1306,6 +1662,7 @@ export function LiveScoutCampoScreen() {
         onRequestClose={() => setShowStatsModal(false)}
       >
         <SafeAreaView style={{ flex: 1, backgroundColor: '#0f172a' }} edges={['top']}>
+          {/* Modal Header */}
           <View style={{ 
             flexDirection: 'row', 
             alignItems: 'center', 
@@ -1331,17 +1688,25 @@ export function LiveScoutCampoScreen() {
           </View>
 
           <ScrollView style={{ flex: 1 }}>
+            {/* Totalizadores  */}
             {live.events.length > 0 && (
               <View style={{ marginTop: 8 }}>
                 <LiveTotalizadores
                   events={live.events}
                   teamName={live.match?.team_name || 'Meu Time'}
-                  opponentName={live.match?.opponent_name || 'Advers ário'}
+                  opponentName={live.match?.opponent_name || 'Adversário'}
                   isCollapsible={false}
+                  matchId={live.match?.id}
+                  teamId={live.match?.team_id}
+                  currentMinute={Math.floor(elapsed / 60)}
+                  currentSecond={elapsed % 60}
+                  currentPeriod={period as 1 | 2}
+                  onManualEventAdded={() => {}}
                 />
               </View>
             )}
 
+            {/* Opponent Events */}
             <View style={{ marginTop: 16 }}>
               <OpponentEventSelector
                 matchId={live.match?.id || ''}
@@ -1351,14 +1716,16 @@ export function LiveScoutCampoScreen() {
                 currentMinute={Math.floor(elapsed / 60)}
                 currentSecond={elapsed % 60}
                 currentPeriod={period as 1 | 2}
-                onEventRecorded={() => {}}
+                onEventRecorded={() => {
+                  // Event recorded feedback
+                }}
               />
             </View>
           </ScrollView>
         </SafeAreaView>
       </Modal>
 
-      {/* Swap Panel Overlay */}
+      {/* ─── Swap Panel Overlay ───────────────────────────────────────────────── */}
       {showEventsModal && showSwapPanel && live.selectedPlayerId && period > 0 && (
         <SwapPanel
           players={matchPlayers.filter(

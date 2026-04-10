@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { useMatchStore } from '@/store/useMatchStore';
@@ -25,29 +25,7 @@ export function OpponentEventSelector({
   currentPeriod,
   onEventRecorded,
 }: OpponentEventSelectorProps) {
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const { addOpponentEvent } = useMatchStore();
-
-  // Group events by category using the profile's categories and events
-  const categorizedEvents = useMemo(() => {
-    const grouped = new Map<string, ScoutEvent[]>();
-    
-    categories.forEach(category => {
-      const categoryEvents = events.filter(event => event.category_id === category.id);
-      if (categoryEvents.length > 0) {
-        grouped.set(category.id, categoryEvents);
-      }
-    });
-
-    // Add uncategorized events (events without a category_id match)
-    const categorizedIds = new Set(categories.map(c => c.id));
-    const uncategorized = events.filter(e => !e.category_id || !categorizedIds.has(e.category_id));
-    if (uncategorized.length > 0) {
-      grouped.set('outros', uncategorized);
-    }
-
-    return grouped;
-  }, [events, categories]);
 
   const handleEventPress = (event: ScoutEvent) => {
     // Validations
@@ -105,77 +83,55 @@ export function OpponentEventSelector({
           </Text>
         </View>
         <Text className="text-orange-100 text-xs mt-1">
-          Selecione o evento para o time adversário
+          Toque no evento para registrar
         </Text>
       </View>
 
-      {/* Category Selection */}
-      <ScrollView className="flex-1">
-        <View className="px-4 py-3">
-          <Text className="text-slate-400 text-xs font-semibold mb-3">
-            EVENTOS DO PERFIL
-          </Text>
-
-          {categories.map(category => {
-            const events = categorizedEvents.get(category.id);
-            if (!events || events.length === 0) return null;
-
-            const isExpanded = selectedCategory === category.id;
-
+      {/* Events Grid */}
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
+        <View className="flex-row flex-wrap gap-3">
+          {events.map((event) => {
+            const eventColor = event.is_positive ? '#10b981' : '#ef4444';
+            const eventBgColor = event.is_positive ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+            
             return (
-              <View key={category.id} className="mb-3">
-                {/* Category Header */}
-                <TouchableOpacity
-                  onPress={() => setSelectedCategory(isExpanded ? null : category.id)}
-                  className="bg-slate-800 rounded-lg px-4 py-3 flex-row items-center justify-between border border-slate-700"
+              <TouchableOpacity
+                key={event.id}
+                onPress={() => handleEventPress(event)}
+                activeOpacity={0.7}
+                className="rounded-xl p-4 border-2 items-center justify-center"
+                style={{
+                  backgroundColor: eventBgColor,
+                  borderColor: eventColor,
+                  width: '47%',
+                  minHeight: 100,
+                }}
+              >
+                <View
+                  className="rounded-full p-3 mb-2"
+                  style={{ backgroundColor: `${eventColor}30` }}
                 >
-                  <View className="flex-row items-center">
-                    <Text className="text-white text-base font-bold">
-                      {category.name}
-                    </Text>
-                    <View className="bg-slate-700 rounded-full px-2 py-0.5 ml-2">
-                      <Text className="text-slate-300 text-xs font-semibold">
-                        {events.length}
-                      </Text>
-                    </View>
-                  </View>
-                  <Icon 
-                    name={isExpanded ? 'chevron-up' : 'chevron-down'} 
-                    size={24} 
-                    color="#94a3b8" 
-                  />
-                </TouchableOpacity>
-
-                {/* Events List */}
-                {isExpanded && (
-                  <View className="mt-2 pl-4">
-                    {events.map((event: ScoutEvent) => {
-                      const eventColor = event.is_positive ? '#10b981' : '#ef4444'; // green for positive, red for negative
-                      return (
-                        <TouchableOpacity
-                          key={event.id}
-                          onPress={() => handleEventPress(event)}
-                          className="bg-slate-800/50 rounded-lg px-4 py-3 mb-2 flex-row items-center justify-between border border-slate-700/50"
-                          style={{
-                            borderLeftWidth: 3,
-                            borderLeftColor: eventColor,
-                          }}
-                        >
-                          <View className="flex-row items-center flex-1">
-                            <Text className="text-2xl mr-2">{event.icon}</Text>
-                            <Text className="text-white text-sm font-medium flex-1">
-                              {event.name}
-                            </Text>
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-              </View>
+                  <Text style={{ fontSize: 28 }}>{event.icon}</Text>
+                </View>
+                <Text
+                  className="text-white text-sm font-bold text-center"
+                  numberOfLines={2}
+                >
+                  {event.name}
+                </Text>
+              </TouchableOpacity>
             );
           })}
         </View>
+
+        {events.length === 0 && (
+          <View className="items-center justify-center py-12">
+            <Icon name="information-outline" size={48} color="#64748b" />
+            <Text className="text-slate-400 text-base mt-3 text-center">
+              Nenhum evento disponível{'\n'}no perfil desta partida
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
