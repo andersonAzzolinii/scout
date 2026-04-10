@@ -155,6 +155,10 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
             awayScore: team === 'away' ? state.live.awayScore + 1 : state.live.awayScore,
           },
         }));
+      } else {
+        set((state) => ({
+          live: { ...state.live, events: [...state.live.events, event] },
+        }));
       }
     } else {
       set((state) => ({
@@ -184,6 +188,10 @@ export const useMatchStore = create<MatchStore>((set, get) => ({
             homeScore: team === 'home' ? state.live.homeScore + 1 : state.live.homeScore,
             awayScore: team === 'away' ? state.live.awayScore + 1 : state.live.awayScore,
           },
+        }));
+      } else {
+        set((state) => ({
+          live: { ...state.live, events: [...state.live.events, opponentEvent] },
         }));
       }
     } else {

@@ -49,6 +49,12 @@ describe('Database Repositories', () => {
     });
 
     describe('insertMatchEvent', () => {
+      beforeEach(() => {
+        // insertMatchEvent validates FK existence via getFirstSync.
+        // Return a truthy row for every lookup (match, team, player).
+        mockGetFirstSync.mockReturnValue({ id: 'exists' });
+      });
+
       it('should insert event with all required fields', () => {
         const event = createMockMatchEvent({
           id: 'test-insert',
