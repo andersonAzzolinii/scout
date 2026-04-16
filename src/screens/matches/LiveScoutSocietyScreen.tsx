@@ -827,6 +827,65 @@ export function LiveScoutSocietyScreen() {
     addLiveEvent(newEvent);
   };
 
+  const handleEventWithZone = (scoutEvent: ScoutEvent, zone: FieldZone) => {
+    if (!live.selectedPlayerId || !match) {
+      Alert.alert('Selecione um jogador', 'Toque em um jogador antes de registrar um evento.');
+      return;
+    }
+
+    // Bloquear eventos se partida encerrada
+    if (matchFinished) return;
+
+    // Validação: não permitir eventos antes de iniciar
+    if (period === 0) {
+      Alert.alert(
+        'Partida Não Iniciada',
+        'Inicie o cronômetro para começar a registrar eventos.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    const minute = Math.floor(elapsed / 60);
+    const second = elapsed % 60;
+
+    // Calcular coordenadas baseado na zona
+    const x = 50; // Centro horizontal
+    let y: number;
+    switch (zone) {
+      case 'DEFENSIVE':
+        y = 83.33; // Centro do terço defensivo (66.67-100)
+        break;
+      case 'MIDFIELD':
+        y = 50; // Centro do terço meio-campo (33.33-66.67)
+        break;
+      case 'OFFENSIVE':
+        y = 16.67; // Centro do terço ofensivo (0-33.33)
+        break;
+    }
+
+    const newEvent: MatchEvent = {
+      id: generateId(),
+      match_id: match.id,
+      team_id: match.team_id,
+      player_id: live.selectedPlayerId,
+      event_id: scoutEvent.id,
+      minute,
+      second,
+      period,
+      x,
+      y,
+      zone,
+      created_at: new Date().toISOString(),
+      event_name: scoutEvent.name,
+      event_icon: scoutEvent.icon,
+      event_type: scoutEvent.event_type,
+      is_positive: scoutEvent.is_positive,
+    };
+
+    addLiveEvent(newEvent);
+  };
+
   if (!match) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-950">
@@ -1098,20 +1157,80 @@ export function LiveScoutSocietyScreen() {
                       {category.name}
                     </Text>
                     {catEvents.map((evt) => (
-                      <TouchableOpacity
+                      <View
                         key={evt.id}
-                        onPress={() => handleEventPress(evt)}
-                        activeOpacity={0.55}
-                        disabled={matchFinished}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(239,68,68,0.04)', opacity: matchFinished ? 0.35 : 1 }}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 9,
+                          borderBottomWidth: 1,
+                          borderBottomColor: '#0f172a',
+                          backgroundColor: 'rgba(239,68,68,0.04)',
+                          opacity: matchFinished ? 0.35 : 1,
+                        }}
                       >
-                        <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexShrink: 0 }}>
-                          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
+                        {/* Event info - non-clickable */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexShrink: 0 }}>
+                            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
+                          </View>
+                          <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
+                            {evt.name}
+                          </Text>
                         </View>
-                        <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
-                          {evt.name}
-                        </Text>
-                      </TouchableOpacity>
+
+                        {/* Zone buttons */}
+                        {!matchFinished && (
+                          <View style={{ flexDirection: 'row', gap: 3, marginTop: 6 }}>
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'DEFENSIVE')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#ef4444',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#ef4444', fontSize: 9, fontWeight: '700' }}>Def</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'MIDFIELD')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(251, 191, 36, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#fbbf24',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>Meio</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'OFFENSIVE')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#22c55e',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#22c55e', fontSize: 9, fontWeight: '700' }}>Atq</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
                     ))}
                   </View>
                 );
@@ -1172,20 +1291,80 @@ export function LiveScoutSocietyScreen() {
                       {category.name}
                     </Text>
                     {catEvents.map((evt) => (
-                      <TouchableOpacity
+                      <View
                         key={evt.id}
-                        onPress={() => handleEventPress(evt)}
-                        activeOpacity={0.55}
-                        disabled={matchFinished}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(34,197,94,0.04)', opacity: matchFinished ? 0.35 : 1 }}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 9,
+                          borderBottomWidth: 1,
+                          borderBottomColor: '#0f172a',
+                          backgroundColor: 'rgba(34,197,94,0.04)',
+                          opacity: matchFinished ? 0.35 : 1,
+                        }}
                       >
-                        <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', flexShrink: 0 }}>
-                          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e' }} />
+                        {/* Event info - non-clickable */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', flexShrink: 0 }}>
+                            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e' }} />
+                          </View>
+                          <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
+                            {evt.name}
+                          </Text>
                         </View>
-                        <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
-                          {evt.name}
-                        </Text>
-                      </TouchableOpacity>
+
+                        {/* Zone buttons */}
+                        {!matchFinished && (
+                          <View style={{ flexDirection: 'row', gap: 3, marginTop: 6 }}>
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'DEFENSIVE')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#ef4444',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#ef4444', fontSize: 9, fontWeight: '700' }}>Def</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'MIDFIELD')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(251, 191, 36, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#fbbf24',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>Meio</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'OFFENSIVE')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#22c55e',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#22c55e', fontSize: 9, fontWeight: '700' }}>Atq</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
                     ))}
                   </View>
                 );

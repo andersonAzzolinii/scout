@@ -135,6 +135,8 @@ export interface MatchPlayer {
 }
 
 // ─── Match Events ─────────────────────────────────────────────────────────────
+export type FieldZone = 'DEFENSIVE' | 'MIDFIELD' | 'OFFENSIVE';
+
 export interface MatchEvent {
   id: string;
   match_id: string;
@@ -146,6 +148,7 @@ export interface MatchEvent {
   period?: number;
   x: number | null;
   y: number | null;
+  zone?: FieldZone | null;  // Computed field from y coordinate
   is_opponent_event?: boolean;
   created_at: string;
   // Joined fields (optional)

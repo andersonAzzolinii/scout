@@ -19,6 +19,7 @@ interface CampoCourtProps {
   getFieldStartTs?: (playerId: string) => number | undefined;
   isTimerRunning?: boolean;
   showEventsModal?: boolean;
+  showZones?: boolean;
 }
 
 /**
@@ -36,6 +37,7 @@ export function CampoCourt({
   getFieldStartTs,
   isTimerRunning,
   showEventsModal = false,
+  showZones = true,
 }: CampoCourtProps) {
   const height = useMemo(() => width / SVG_ASPECT_RATIO, [width]);
 
@@ -50,7 +52,7 @@ export function CampoCourt({
   return (
     <View style={{ width, height, position: 'relative' }}>
       {/* Court SVG */}
-      <CourtSVG width={width} height={height} />
+      <CourtSVG width={width} height={height} showZones={showZones} />
 
       {/* Position buttons overlay */}
       {positions.map((position) => {

@@ -21,7 +21,7 @@ import { useMatchStore } from '@/store/useMatchStore';
 import { useMatchTimer, useBenchPanel } from '@/hooks';
 import { generateId, formatTime } from '@/utils';
 import type { RootStackParamList } from '@/navigation/RootNavigator';
-import type { ScoutCategory, ScoutEvent, MatchEvent, PlayerPosition } from '@/types';
+import type { ScoutCategory, ScoutEvent, MatchEvent, PlayerPosition, FieldZone } from '@/types';
 import * as matchRepo from '@/database/repositories/matchRepository';
 import * as profileRepo from '@/database/repositories/profileRepository';
 import * as benchRepo from '@/database/repositories/benchRepository';
@@ -656,7 +656,7 @@ export function LiveScoutScreen() {
     setShowEventsModal(false);
   };
 
-  const handleEventPress = (scoutEvent: ScoutEvent) => {
+  const handleEventWithZone = (scoutEvent: ScoutEvent, zone: FieldZone) => {
     if (!live.selectedPlayerId || !match) {
       Alert.alert('Selecione um jogador', 'Toque em um jogador antes de registrar um evento.');
       return;
@@ -675,6 +675,22 @@ export function LiveScoutScreen() {
     const minute = Math.floor(elapsed / 60);
     const second = elapsed % 60;
 
+    // Calculate coordinates based on zone
+    let yPercent: number;
+    const xPercent = 50; // Center of field horizontally
+
+    switch (zone) {
+      case 'DEFENSIVE':
+        yPercent = 83.33; // Center of defensive third (66.67-100)
+        break;
+      case 'MIDFIELD':
+        yPercent = 50; // Center of midfield third (33.33-66.67)
+        break;
+      case 'OFFENSIVE':
+        yPercent = 16.67; // Center of offensive third (0-33.33)
+        break;
+    }
+
     const newEvent: MatchEvent = {
       id: generateId(),
       match_id: match.id,
@@ -684,8 +700,9 @@ export function LiveScoutScreen() {
       minute,
       second,
       period,
-      x: null,
-      y: null,
+      x: xPercent,
+      y: yPercent,
+      zone,
       created_at: new Date().toISOString(),
       event_name: scoutEvent.name,
       event_icon: scoutEvent.icon,
@@ -919,21 +936,95 @@ export function LiveScoutScreen() {
                     <Text style={{ color: '#4b5563', fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
                       {category.name}
                     </Text>
-                    {catEvents.map((evt) => (
-                      <TouchableOpacity
+                    {catEvents.map((evt) => {
+                      const showZoneButtons = sportType === 'society' || sportType === 'campo';
+                      
+                      return (
+                      <View
                         key={evt.id}
-                        onPress={() => handleEventPress(evt)}
-                        activeOpacity={0.55}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(239,68,68,0.04)' }}
+                        style={{ paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(239,68,68,0.04)' }}
                       >
-                        <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexShrink: 0 }}>
-                          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
+                        {/* Event info - non-clickable */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(239,68,68,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(239,68,68,0.25)', flexShrink: 0 }}>
+                            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
+                          </View>
+                          <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
+                            {evt.name}
+                          </Text>
                         </View>
-                        <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
-                          {evt.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+
+                        {/* Zone buttons (only for society and campo) */}
+                        {showZoneButtons && (
+                          <View style={{ flexDirection: 'row', gap: 3, marginTop: 6 }}>
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'DEFENSIVE')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#ef4444',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#ef4444', fontSize: 9, fontWeight: '700' }}>Def</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'MIDFIELD')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(251, 191, 36, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#fbbf24',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>Meio</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'OFFENSIVE')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#22c55e',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#22c55e', fontSize: 9, fontWeight: '700' }}>Atq</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+
+                        {/* Fallback for futsal - single tap (old behavior) */}
+                        {!showZoneButtons && (
+                          <TouchableOpacity
+                            onPress={() => handleEventWithZone(evt, 'MIDFIELD')} // Default to midfield for futsal
+                            style={{
+                              backgroundColor: 'rgba(239,68,68,0.15)',
+                              borderRadius: 4,
+                              paddingVertical: 5,
+                              marginTop: 5,
+                              alignItems: 'center',
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={{ color: '#ef4444', fontSize: 10, fontWeight: '600' }}>Registrar</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )})}
                   </View>
                 );
               })}
@@ -990,21 +1081,95 @@ export function LiveScoutScreen() {
                     <Text style={{ color: '#4b5563', fontSize: 8, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 4 }}>
                       {category.name}
                     </Text>
-                    {catEvents.map((evt) => (
-                      <TouchableOpacity
+                    {catEvents.map((evt) => {
+                      const showZoneButtons = sportType === 'society' || sportType === 'campo';
+                      
+                      return (
+                      <View
                         key={evt.id}
-                        onPress={() => handleEventPress(evt)}
-                        activeOpacity={0.55}
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(34,197,94,0.04)' }}
+                        style={{ paddingHorizontal: 10, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#0f172a', backgroundColor: 'rgba(34,197,94,0.04)' }}
                       >
-                        <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', flexShrink: 0 }}>
-                          <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e' }} />
+                        {/* Event info - non-clickable */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <View style={{ width: 34, height: 34, borderRadius: 9, backgroundColor: 'rgba(34,197,94,0.15)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(34,197,94,0.25)', flexShrink: 0 }}>
+                            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e' }} />
+                          </View>
+                          <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
+                            {evt.name}
+                          </Text>
                         </View>
-                        <Text style={{ color: '#d1d5db', fontSize: 11, lineHeight: 15, flex: 1 }} numberOfLines={2}>
-                          {evt.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+
+                        {/* Zone buttons (only for society and campo) */}
+                        {showZoneButtons && (
+                          <View style={{ flexDirection: 'row', gap: 3, marginTop: 6 }}>
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'DEFENSIVE')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#ef4444',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#ef4444', fontSize: 9, fontWeight: '700' }}>Def</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'MIDFIELD')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(251, 191, 36, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#fbbf24',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#fbbf24', fontSize: 9, fontWeight: '700' }}>Meio</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                              onPress={() => handleEventWithZone(evt, 'OFFENSIVE')}
+                              style={{
+                                flex: 1,
+                                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                                borderWidth: 1,
+                                borderColor: '#22c55e',
+                                borderRadius: 4,
+                                paddingVertical: 4,
+                                alignItems: 'center',
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={{ color: '#22c55e', fontSize: 9, fontWeight: '700' }}>Atq</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+
+                        {/* Fallback for futsal - single tap (old behavior) */}
+                        {!showZoneButtons && (
+                          <TouchableOpacity
+                            onPress={() => handleEventWithZone(evt, 'MIDFIELD')} // Default to midfield for futsal
+                            style={{
+                              backgroundColor: 'rgba(34,197,94,0.15)',
+                              borderRadius: 4,
+                              paddingVertical: 5,
+                              marginTop: 5,
+                              alignItems: 'center',
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Text style={{ color: '#22c55e', fontSize: 10, fontWeight: '600' }}>Registrar</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    )})}
                   </View>
                 );
               })}

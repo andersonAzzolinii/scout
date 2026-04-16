@@ -26,7 +26,7 @@ import { useMatchStore } from '@/store/useMatchStore';
 import { useMatchTimer } from '@/hooks';
 import { generateId, formatTime } from '@/utils';
 import type { RootStackParamList } from '@/navigation/RootNavigator';
-import type { ScoutCategory, ScoutEvent, MatchEvent, PlayerPosition } from '@/types';
+import type { ScoutCategory, ScoutEvent, MatchEvent, PlayerPosition, FieldZone } from '@/types';
 import * as matchRepo from '@/database/repositories/matchRepository';
 import * as profileRepo from '@/database/repositories/profileRepository';
 import * as fieldRepo from '@/database/repositories/fieldRepository';
@@ -735,6 +735,63 @@ export function LiveScoutCampoScreen() {
     addLiveEvent(newEvent);
   };
 
+  const handleEventWithZone = (scoutEvent: ScoutEvent, zone: FieldZone) => {
+    if (!live.selectedPlayerId || !match) {
+      Alert.alert('Selecione um jogador', 'Toque em um jogador antes de registrar um evento.');
+      return;
+    }
+
+    // Validação: não permitir eventos antes de iniciar
+    if (matchFinished) return;
+    if (period === 0) {
+      Alert.alert(
+        'Partida Não Iniciada',
+        'Inicie o cronômetro para começar a registrar eventos.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    const minute = Math.floor(elapsed / 60);
+    const second = elapsed % 60;
+
+    // Calcular coordenadas baseado na zona
+    const x = 50; // Centro horizontal
+    let y = 50; // Default
+    switch (zone) {
+      case 'DEFENSIVE':
+        y = 83.33; // Centro do terço defensivo (66.67-100)
+        break;
+      case 'MIDFIELD':
+        y = 50; // Centro do terço meio-campo (33.33-66.67)
+        break;
+      case 'OFFENSIVE':
+        y = 16.67; // Centro do terço ofensivo (0-33.33)
+        break;
+    }
+
+    const newEvent: MatchEvent = {
+      id: generateId(),
+      match_id: match.id,
+      team_id: match.team_id,
+      player_id: live.selectedPlayerId,
+      event_id: scoutEvent.id,
+      minute,
+      second,
+      period,
+      x,
+      y,
+      zone,
+      created_at: new Date().toISOString(),
+      event_name: scoutEvent.name,
+      event_icon: scoutEvent.icon,
+      event_type: scoutEvent.event_type,
+      is_positive: scoutEvent.is_positive,
+    };
+
+    addLiveEvent(newEvent);
+  };
+
   const handleStatsEventPress = (scoutEvent: ScoutEvent, isPositive: boolean) => {
     if (!match) return;
 
@@ -1015,19 +1072,23 @@ export function LiveScoutCampoScreen() {
         <View className="flex-1 flex-row">
 
           {/* Left: Negative Events Panel */}
-          {((showEventsModal && live.selectedPlayerId) || showStatsMode) && (period > 0 || matchFinished) && !showPositionSwapMode && (
-            <EventPanel
-              type="negative"
-              categories={displayCategories}
-              events={showStatsMode ? events : filteredEvents}
-              liveEvents={live.events}
-              isRunning={isRunning}
-              showStatsMode={showStatsMode}
-              selectedPlayerId={live.selectedPlayerId}
-              matchFinished={matchFinished}
-              onEventPress={(evt) => showStatsMode ? handleStatsEventPress(evt, false) : handleEventPress(evt)}
-            />
-          )}
+          {(() => {
+            const shouldShowPanel = ((showEventsModal && live.selectedPlayerId) || showStatsMode) && (period > 0 || matchFinished) && !showPositionSwapMode;
+            return shouldShowPanel ? (
+              <EventPanel
+                type="negative"
+                categories={displayCategories}
+                events={showStatsMode ? events : filteredEvents}
+                liveEvents={live.events}
+                isRunning={isRunning}
+                showStatsMode={showStatsMode}
+                selectedPlayerId={live.selectedPlayerId}
+                matchFinished={matchFinished}
+                sportType={sportType}
+                onEventWithZone={(evt, zone) => showStatsMode ? handleStatsEventPress(evt, false) : handleEventWithZone(evt, zone)}
+              />
+            ) : null;
+          })()}
 
           {/* Center: Court */}
           <View className="flex-1 justify-center items-center">
@@ -1095,19 +1156,23 @@ export function LiveScoutCampoScreen() {
           </View>
 
           {/* Right: Positive Events Panel */}
-          {((showEventsModal && live.selectedPlayerId) || showStatsMode) && (period > 0 || matchFinished) && !showPositionSwapMode && (
-            <EventPanel
-              type="positive"
-              categories={displayCategories}
-              events={showStatsMode ? events : filteredEvents}
-              liveEvents={live.events}
-              isRunning={isRunning}
-              showStatsMode={showStatsMode}
-              selectedPlayerId={live.selectedPlayerId}
-              matchFinished={matchFinished}
-              onEventPress={(evt) => showStatsMode ? handleStatsEventPress(evt, true) : handleEventPress(evt)}
-            />
-          )}
+          {(() => {
+            const shouldShowPanel = ((showEventsModal && live.selectedPlayerId) || showStatsMode) && (period > 0 || matchFinished) && !showPositionSwapMode;
+            return shouldShowPanel ? (
+              <EventPanel
+                type="positive"
+                categories={displayCategories}
+                events={showStatsMode ? events : filteredEvents}
+                liveEvents={live.events}
+                isRunning={isRunning}
+                showStatsMode={showStatsMode}
+                selectedPlayerId={live.selectedPlayerId}
+                matchFinished={matchFinished}
+                sportType={sportType}
+                onEventWithZone={(evt, zone) => showStatsMode ? handleStatsEventPress(evt, true) : handleEventWithZone(evt, zone)}
+              />
+            ) : null;
+          })()}
 
           {/* Player Selection */}
         <PlayerSelector

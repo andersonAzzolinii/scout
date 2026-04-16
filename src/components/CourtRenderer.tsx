@@ -20,6 +20,7 @@ interface CourtRendererProps {
   getFieldStartTs?: (playerId: string) => number | undefined;
   isTimerRunning?: boolean;
   showEventsModal?: boolean;
+  showZones?: boolean; // Show field zones for society and campo
 }
 
 /**
@@ -39,6 +40,7 @@ export function CourtRenderer({
   getFieldStartTs,
   isTimerRunning,
   showEventsModal = false,
+  showZones = true,
 }: CourtRendererProps) {
   // Props comuns para todos os tipos de quadra
   const commonProps = {
@@ -53,6 +55,7 @@ export function CourtRenderer({
     getFieldStartTs,
     isTimerRunning,
     showEventsModal,
+    showZones,
   };
 
   switch (sportType) {

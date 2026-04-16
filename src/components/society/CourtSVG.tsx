@@ -1,22 +1,75 @@
 import React from 'react';
 import Svg, { Rect, Circle, Line, Path, Ellipse } from 'react-native-svg';
-import { COURT_COLORS } from '@/constants/society.constants';
+import { COURT_COLORS, ZONE_COLORS, FIELD_ZONES } from '@/constants/society.constants';
 
 interface CourtSVGProps {
   width: number;
   height: number;
+  showZones?: boolean;
 }
 
 /**
  * SVG representation of a society field (synthetic turf)
  */
-export function CourtSVG({ width, height }: CourtSVGProps) {
+export function CourtSVG({ width, height, showZones = true }: CourtSVGProps) {
   const { background, lines, lineWidth } = COURT_COLORS;
 
   return (
     <Svg width={width} height={height} viewBox="0 0 400 600">
       {/* Background - verde sintético */}
       <Rect x="0" y="0" width="400" height="600" fill={background} />
+
+      {/* Field zones - horizontal thirds */}
+      {showZones && (
+        <>
+          {/* Offensive third (top) */}
+          <Rect
+            x="30"
+            y="30"
+            width="340"
+            height="170"
+            fill={ZONE_COLORS.OFFENSIVE.fill}
+          />
+          
+          {/* Midfield third */}
+          <Rect
+            x="30"
+            y="200"
+            width="340"
+            height="200"
+            fill={ZONE_COLORS.MIDFIELD.fill}
+          />
+          
+          {/* Defensive third (bottom) */}
+          <Rect
+            x="30"
+            y="400"
+            width="340"
+            height="170"
+            fill={ZONE_COLORS.DEFENSIVE.fill}
+          />
+          
+          {/* Zone dividing lines */}
+          <Line
+            x1="30"
+            y1="200"
+            x2="370"
+            y2="200"
+            stroke={ZONE_COLORS.OFFENSIVE.stroke}
+            strokeWidth="1.5"
+            strokeDasharray="8,4"
+          />
+          <Line
+            x1="30"
+            y1="400"
+            x2="370"
+            y2="400"
+            stroke={ZONE_COLORS.DEFENSIVE.stroke}
+            strokeWidth="1.5"
+            strokeDasharray="8,4"
+          />
+        </>
+      )}
 
       {/* Outer boundary */}
       <Rect

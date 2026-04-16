@@ -59,3 +59,71 @@ export const POSITION_BUTTON = {
     elevation: 5,
   },
 } as const;
+
+/**
+ * Field zones - horizontal thirds (defensive, midfield, offensive)
+ */
+export type FieldZone = 'DEFENSIVE' | 'MIDFIELD' | 'OFFENSIVE';
+
+export const FIELD_ZONES = {
+  DEFENSIVE: {
+    yMin: 66.67,
+    yMax: 100,
+    yCenter: 83.33,
+    label: 'Terço Defensivo',
+    shortLabel: 'Def',
+  },
+  MIDFIELD: {
+    yMin: 33.33,
+    yMax: 66.67,
+    yCenter: 50,
+    label: 'Meio-Campo',
+    shortLabel: 'Meio',
+  },
+  OFFENSIVE: {
+    yMin: 0,
+    yMax: 33.33,
+    yCenter: 16.67,
+    label: 'Terço Ofensivo',
+    shortLabel: 'Atq',
+  },
+} as const;
+
+/**
+ * Zone visual colors
+ */
+export const ZONE_COLORS = {
+  DEFENSIVE: {
+    fill: 'rgba(239, 68, 68, 0.15)',    // vermelho claro
+    stroke: 'rgba(239, 68, 68, 0.4)',
+    button: '#ef4444',
+  },
+  MIDFIELD: {
+    fill: 'rgba(251, 191, 36, 0.15)',   // amarelo claro
+    stroke: 'rgba(251, 191, 36, 0.4)',
+    button: '#fbbf24',
+  },
+  OFFENSIVE: {
+    fill: 'rgba(34, 197, 94, 0.15)',    // verde claro
+    stroke: 'rgba(34, 197, 94, 0.4)',
+    button: '#22c55e',
+  },
+} as const;
+
+/**
+ * Helper function to determine zone from Y coordinate percentage
+ */
+export function getZoneFromYPercent(y: number | null): FieldZone | null {
+  if (y === null) return null;
+  
+  if (y >= FIELD_ZONES.DEFENSIVE.yMin) return 'DEFENSIVE';
+  if (y >= FIELD_ZONES.MIDFIELD.yMin) return 'MIDFIELD';
+  return 'OFFENSIVE';
+}
+
+/**
+ * Get Y coordinate for zone center
+ */
+export function getYPercentFromZone(zone: FieldZone): number {
+  return FIELD_ZONES[zone].yCenter;
+}

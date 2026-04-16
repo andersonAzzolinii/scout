@@ -5,6 +5,7 @@ import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { Header } from '@/components/ui/Header';
 import { Card } from '@/components/ui/Card';
 import { PlayerAccordionCard, type PlayerData } from '@/components/match/PlayerAccordionCard';
+import { useZoneStatistics } from '@/hooks';
 import type { RootStackParamList } from '@/navigation/RootNavigator';
 import type { MatchEvent, Match, ScoutEvent } from '@/types';
 import * as matchRepo from '@/database/repositories/matchRepository';
@@ -193,6 +194,10 @@ export function MatchReportScreen() {
     });
     return counts;
   }, [filteredEvents, nameToStaticId]);
+
+  // Zone statistics (only for society and campo)
+  const zoneStats = useZoneStatistics(filteredEvents);
+  const showZoneStats = match?.sport_type === 'society' || match?.sport_type === 'campo';
 
   // Summary groups driven entirely from eventCategories.ts
   const summaryGroups = useMemo(
@@ -468,6 +473,61 @@ export function MatchReportScreen() {
           )}
         </Card>
 
+        {/* Zone Distribution (Society & Campo only) */}
+        {showZoneStats && zoneStats.overall.total > 0 && (
+          <Card className="mb-4">
+            <Text className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+              Distribuição por Terço de Campo
+            </Text>
+            <View style={{ gap: 10 }}>
+              {(['DEFENSIVE', 'MIDFIELD', 'OFFENSIVE'] as const).map(zone => {
+                const count = zoneStats.overall.byZone[zone];
+                const percentage = zoneStats.overall.percentages[zone];
+                const zoneLabel = zone === 'DEFENSIVE' ? 'Defensivo' : zone === 'MIDFIELD' ? 'Meio' : 'Ofensivo';
+                const zoneColor = zone === 'DEFENSIVE' ? '#ef4444' : zone === 'MIDFIELD' ? '#f59e0b' : '#22c55e';
+                const zoneColorLight = zone === 'DEFENSIVE' ? 'rgba(239,68,68,0.1)' : zone === 'MIDFIELD' ? 'rgba(245,158,11,0.1)' : 'rgba(34,197,94,0.1)';
+                
+                return (
+                  <View key={zone}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: zoneColor }} />
+                      <Text style={{ flex: 1, fontSize: 13, fontWeight: '600', color: '#374151' }}>
+                        {zoneLabel}
+                      </Text>
+                      <Text style={{ fontSize: 13, fontWeight: '700', color: '#374151' }}>
+                        {count}
+                      </Text>
+                      <View style={{ backgroundColor: zoneColorLight, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 2, minWidth: 50, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: zoneColor }}>
+                          {percentage.toFixed(1)}%
+                        </Text>
+                      </View>
+                    </View>
+                    {/* Progress bar */}
+                    <View style={{ height: 6, backgroundColor: '#f3f4f6', borderRadius: 3, overflow: 'hidden' }}>
+                      <View 
+                        style={{ 
+                          height: '100%', 
+                          width: `${percentage}%`, 
+                          backgroundColor: zoneColor,
+                          borderRadius: 3,
+                        }} 
+                      />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+            {zoneStats.overall.byZone.UNKNOWN > 0 && (
+              <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(156,163,175,0.2)' }}>
+                <Text style={{ fontSize: 11, color: '#9ca3af', textAlign: 'center' }}>
+                  {zoneStats.overall.byZone.UNKNOWN} evento(s) sem zona registrada
+                </Text>
+              </View>
+            )}
+          </Card>
+        )}
+
         {/* Group Leaders */}
         {groupLeaders.length > 0 && (
           <Card className="mb-4">
@@ -521,17 +581,22 @@ export function MatchReportScreen() {
 
         {/* Per-player cards */}
         {players.length > 0 ? (
-          players.map(([playerId, player]) => (
-            <PlayerAccordionCard
-              key={playerId}
-              playerId={playerId}
-              player={player}
-              relevantGroups={relevantGroups}
-              headerEvents={headerEvents}
-              formatSeconds={formatSeconds}
-              onLayout={e => { playerYOffsets.current[playerId] = e.nativeEvent.layout.y; }}
-            />
-          ))
+          players.map(([playerId, player]) => {
+            const playerZoneStats = zoneStats.getPlayerZoneStats(playerId);
+            return (
+              <PlayerAccordionCard
+                key={playerId}
+                playerId={playerId}
+                player={player}
+                relevantGroups={relevantGroups}
+                headerEvents={headerEvents}
+                formatSeconds={formatSeconds}
+                onLayout={e => { playerYOffsets.current[playerId] = e.nativeEvent.layout.y; }}
+                zoneStats={playerZoneStats}
+                showZones={showZoneStats}
+              />
+            );
+          })
         ) : (
           <Card className="mb-4">
             <Text className="text-sm text-gray-400 text-center py-2">Sem dados para o filtro selecionado</Text>

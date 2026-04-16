@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, Pressable, LayoutChangeEvent } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
 import { Card } from '@/components/ui/Card';
+import { type FieldZone } from '@/types';
 import {
   computeGroupTotal,
   computeGroupSuccess,
@@ -21,6 +22,12 @@ export type PlayerData = {
   negative: number;
 };
 
+export type ZoneStatistics = {
+  total: number;
+  byZone: Record<FieldZone | 'UNKNOWN', number>;
+  percentages: Record<FieldZone | 'UNKNOWN', number>;
+};
+
 type Props = {
   playerId: string;
   player: PlayerData;
@@ -28,9 +35,20 @@ type Props = {
   headerEvents: EventDefinition[];
   formatSeconds: (s: number) => string;
   onLayout: (e: LayoutChangeEvent) => void;
+  zoneStats?: ZoneStatistics | null;
+  showZones?: boolean;
 };
 
-export function PlayerAccordionCard({ playerId, player, relevantGroups, headerEvents, formatSeconds, onLayout }: Props) {
+export function PlayerAccordionCard({ 
+  playerId, 
+  player, 
+  relevantGroups, 
+  headerEvents, 
+  formatSeconds, 
+  onLayout,
+  zoneStats,
+  showZones = false,
+}: Props) {
   const [expanded, setExpanded] = useState(false);
 
   const groupsWithData = relevantGroups.filter(g => computeGroupTotal(g, player.counts) > 0);
@@ -145,6 +163,38 @@ export function PlayerAccordionCard({ playerId, player, relevantGroups, headerEv
                 </View>
               );
             })}
+
+            {/* Zone distribution for this player */}
+            {showZones && zoneStats && zoneStats.total > 0 && (
+              <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(156,163,175,0.15)' }}>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                  Distribuição por Terço
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 6 }}>
+                  {(['DEFENSIVE', 'MIDFIELD', 'OFFENSIVE'] as const).map(zone => {
+                    const count = zoneStats.byZone[zone];
+                    const percentage = zoneStats.percentages[zone];
+                    const zoneLabel = zone === 'DEFENSIVE' ? 'Def' : zone === 'MIDFIELD' ? 'Meio' : 'Atq';
+                    const zoneColor = zone === 'DEFENSIVE' ? '#ef4444' : zone === 'MIDFIELD' ? '#f59e0b' : '#22c55e';
+                    const zoneColorLight = zone === 'DEFENSIVE' ? 'rgba(239,68,68,0.12)' : zone === 'MIDFIELD' ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)';
+                    
+                    return (
+                      <View key={zone} style={{ flex: 1, backgroundColor: zoneColorLight, borderRadius: 8, padding: 8, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 18, fontWeight: '800', color: zoneColor, lineHeight: 20 }}>
+                          {count}
+                        </Text>
+                        <Text style={{ fontSize: 10, fontWeight: '600', color: zoneColor, marginTop: 2 }}>
+                          {zoneLabel}
+                        </Text>
+                        <Text style={{ fontSize: 9, color: '#9ca3af', marginTop: 1 }}>
+                          {percentage.toFixed(0)}%
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
           </>
         )}
       </Card>
