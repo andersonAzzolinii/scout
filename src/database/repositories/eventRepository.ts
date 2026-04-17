@@ -49,8 +49,8 @@ export function insertMatchEvent(event: Omit<MatchEvent, 'created_at' | 'player_
   }
   
   db.runSync(
-    `INSERT INTO match_events (id, match_id, team_id, player_id, event_id, minute, second, period, x, y, is_opponent_event)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO match_events (id, match_id, team_id, player_id, event_id, minute, second, period, x, y, zone, is_opponent_event)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       event.id,
       event.match_id,
@@ -62,6 +62,7 @@ export function insertMatchEvent(event: Omit<MatchEvent, 'created_at' | 'player_
       event.period ?? 1,
       event.x ?? null,
       event.y ?? null,
+      event.zone ?? null,
       event.is_opponent_event ? 1 : 0,
     ]
   );

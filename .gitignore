@@ -35,3 +35,5 @@ yarn-error.log*
 .gradle/
 build/
 local.properties
+.specify
+.github

@@ -817,4 +817,38 @@ export function runMigrations(): void {
   } catch (e) { 
     console.error('❌ Erro na migração FK team_id match_events:', e); 
   }
+
+  // ============================================================================
+  // MIGRAÇÃO: Adicionar campo zone na tabela match_events
+  // ============================================================================
+  try {
+    const meInfo = db.getAllSync<{ sql: string }>(`
+      SELECT sql FROM sqlite_master WHERE type='table' AND name='match_events';
+    `);
+    
+    const meSchema = meInfo[0]?.sql || '';
+    
+    if (!meSchema.includes('zone')) {
+      console.log('🔄 Adicionando campo zone na tabela match_events...');
+      db.execSync(`ALTER TABLE match_events ADD COLUMN zone TEXT;`);
+      console.log('✅ Campo zone adicionado');
+      
+      // Calcular zona para eventos existentes baseado na coordenada Y
+      console.log('🔄 Calculando zonas para eventos existentes...');
+      
+      // Zona DEFENSIVE: y >= 66.67
+      db.execSync(`UPDATE match_events SET zone = 'DEFENSIVE' WHERE y >= 66.67 AND y IS NOT NULL;`);
+      
+      // Zona MIDFIELD: 33.33 <= y < 66.67
+      db.execSync(`UPDATE match_events SET zone = 'MIDFIELD' WHERE y >= 33.33 AND y < 66.67;`);
+      
+      // Zona OFFENSIVE: y < 33.33
+      db.execSync(`UPDATE match_events SET zone = 'OFFENSIVE' WHERE y < 33.33 AND y IS NOT NULL;`);
+      
+      const updated = db.getFirstSync<{ count: number }>(`SELECT COUNT(*) as count FROM match_events WHERE zone IS NOT NULL;`);
+      console.log(`✅ ${updated?.count ?? 0} eventos com zona calculada`);
+    }
+  } catch (e) {
+    console.error('❌ Erro ao adicionar campo zone:', e);
+  }
 }
